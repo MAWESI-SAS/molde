@@ -7,6 +7,16 @@
     <Nullable>enable</Nullable>
     <AssemblyName>efrust-sidecar</AssemblyName>
     <RootNamespace>EfRust.Sidecar</RootNamespace>
+
+    <!-- Empaquetado como `dotnet tool` (instalable global o local). Tras
+         `dotnet tool install`, invocar con `EFRUST_SIDECAR_CMD=efrust-sidecar`
+         (o `dotnet efrust-sidecar`). Ver crates/efrust-design/src/sidecar.rs. -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>efrust-sidecar</ToolCommandName>
+    <PackageId>EfRust.Sidecar</PackageId>
+    <Version>0.1.0</Version>
+    <Description>Extrae el modelo de EF Core (IModel) a JSON para efrust.</Description>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
   </PropertyGroup>
 
   <!--

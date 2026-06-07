@@ -71,6 +71,7 @@ Ver [`docs/model-ir.md`](docs/model-ir.md) para el contrato central.
 | **12** | **Búsqueda en MySQL**: índices FULLTEXT + columnas generadas en scaffold y round-trip | ✅ verificado vs MySQL 8 |
 | **13** | **SQL Server**: columnas computadas `PERSISTED` (round-trip) + full-text best-effort (`raw_objects`/`RawSql`) | ✅ computed vs SQL Server 2022; FTS code-complete |
 | **14** | **SQLite table-rebuild**: `ALTER COLUMN` y alta/baja de FK sobre tablas existentes vía reconstrucción | ✅ verificado (preserva datos) |
+| **15** | Sidecar empaquetable como **`dotnet tool`** (`EFRUST_SIDECAR_CMD`) | ✅ pack + install + ejecución verificados |
 
 > **Notas Fase 5c:**
 > - **Normalización de nombres**: el scaffold convierte `snake_case` → `PascalCase`
@@ -141,6 +142,19 @@ con la forma exacta del Model IR.
 ```bash
 efrust-sidecar --assembly <ruta.dll> [--context <NombreDbContext>]
 ```
+
+Se puede usar compilado (`dotnet efrust-sidecar.dll …`) o instalado como
+**`dotnet tool`**:
+
+```bash
+dotnet pack sidecar/EfRust.Sidecar -c Release -o ./nupkg
+dotnet tool install --global --add-source ./nupkg EfRust.Sidecar
+# y apuntar efrust al tool:
+export EFRUST_SIDECAR_CMD=efrust-sidecar
+```
+
+efrust elige el modo así: si `EFRUST_SIDECAR_CMD` está definido lo usa (tool);
+si no, ejecuta `dotnet <ruta-al-dll>` (ver `crates/efrust-design/src/sidecar.rs`).
 
 El contrato C#↔Rust se verifica en `crates/efrust-core/tests/sidecar_contract.rs`
 (deserializa salida real del sidecar). Ver `examples/SampleModel/` para un
