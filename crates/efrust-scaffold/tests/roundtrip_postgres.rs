@@ -42,7 +42,10 @@ async fn round_trip_postgres_objetos_de_busqueda() {
     // EnsureExtension y el PostgresGenerator emitir el CREATE EXTENSION.
     let ops = diff(&DatabaseModel::empty(), &src_model);
     assert!(
-        matches!(ops.first(), Some(efrust_core::diff::Operation::EnsureExtension { .. })),
+        matches!(
+            ops.first(),
+            Some(efrust_core::diff::Operation::EnsureExtension { .. })
+        ),
         "se esperaba EnsureExtension al inicio del diff"
     );
     let gen = PostgresGenerator::new();
@@ -56,15 +59,22 @@ async fn round_trip_postgres_objetos_de_busqueda() {
     }
 
     // 3. Releer el destino y comparar.
-    let mut dst_model = efrust_scaffold::reader::read_model(&dst, Provider::Postgres, Some("public"))
-        .await
-        .expect("leyendo DST");
+    let mut dst_model =
+        efrust_scaffold::reader::read_model(&dst, Provider::Postgres, Some("public"))
+            .await
+            .expect("leyendo DST");
     dst_model.normalize();
 
     let st = src_model.tables[0].clone();
     let dt = dst_model.tables[0].clone();
-    assert_eq!(st.columns, dt.columns, "columnas (vector/tsvector generadas)");
-    assert_eq!(st.indexes, dt.indexes, "índices (hnsw/gin/expresión/parcial)");
+    assert_eq!(
+        st.columns, dt.columns,
+        "columnas (vector/tsvector generadas)"
+    );
+    assert_eq!(
+        st.indexes, dt.indexes,
+        "índices (hnsw/gin/expresión/parcial)"
+    );
     assert_eq!(st.triggers, dt.triggers, "triggers");
     assert_eq!(src_model.functions, dst_model.functions, "funciones");
     assert_eq!(src_model, dst_model, "modelo completo equivalente");

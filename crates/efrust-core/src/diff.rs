@@ -158,19 +158,31 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     // Extensión pgvector: asegurarla cuando el destino la requiere y el origen
     // no. Se antepone a todo (los tipos `vector`/índices hnsw la necesitan).
     if requires_vector_extension(to) && !requires_vector_extension(from) {
-        ensure_extensions.push(Operation::EnsureExtension { name: "vector".into() });
+        ensure_extensions.push(Operation::EnsureExtension {
+            name: "vector".into(),
+        });
     }
 
     // Funciones de esquema: crear nuevas o redefinidas (CREATE OR REPLACE),
     // eliminar las que ya no están. Se crean antes que los triggers que las usan.
     for f in &to.functions {
-        match from.functions.iter().find(|x| x.name == f.name && x.schema == f.schema) {
+        match from
+            .functions
+            .iter()
+            .find(|x| x.name == f.name && x.schema == f.schema)
+        {
             Some(old) if old.definition == f.definition => {}
-            _ => create_functions.push(Operation::CreateFunction { function: f.clone() }),
+            _ => create_functions.push(Operation::CreateFunction {
+                function: f.clone(),
+            }),
         }
     }
     for f in &from.functions {
-        if !to.functions.iter().any(|x| x.name == f.name && x.schema == f.schema) {
+        if !to
+            .functions
+            .iter()
+            .any(|x| x.name == f.name && x.schema == f.schema)
+        {
             drop_functions.push(Operation::DropFunction {
                 schema: f.schema.clone(),
                 name: f.name.clone(),
@@ -244,7 +256,10 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
                 .filter(|c| old_t.column(&c.name).is_some())
                 .map(|c| c.name.clone())
                 .collect();
-            rebuilds.push(Operation::RebuildTable { table: new_t.clone(), copy_columns });
+            rebuilds.push(Operation::RebuildTable {
+                table: new_t.clone(),
+                copy_columns,
+            });
         }
 
         diff_seed_data(old_t, new_t, &mut data_ops);
@@ -321,7 +336,11 @@ fn diff_seed_data(old_t: &Table, new_t: &Table, ops: &mut Vec<Operation>) {
 
     for new_row in &new_t.seed_data {
         let key = seed_key(new_row, &pk_cols);
-        match old_t.seed_data.iter().find(|r| seed_key(r, &pk_cols) == key) {
+        match old_t
+            .seed_data
+            .iter()
+            .find(|r| seed_key(r, &pk_cols) == key)
+        {
             None => ops.push(Operation::InsertData {
                 schema: new_t.schema.clone(),
                 table: new_t.name.clone(),
@@ -360,11 +379,15 @@ fn diff_seed_data(old_t: &Table, new_t: &Table, ops: &mut Vec<Operation>) {
 fn requires_vector_extension(model: &DatabaseModel) -> bool {
     model.tables.iter().any(|t| {
         t.columns.iter().any(|c| {
-            c.store_type.as_deref().map(|s| s.starts_with("vector")).unwrap_or(false)
+            c.store_type
+                .as_deref()
+                .map(|s| s.starts_with("vector"))
+                .unwrap_or(false)
                 || c.clr_type.as_deref() == Some("Pgvector.Vector")
-        }) || t.indexes.iter().any(|i| {
-            matches!(i.method.as_deref(), Some("hnsw") | Some("ivfflat"))
-        })
+        }) || t
+            .indexes
+            .iter()
+            .any(|i| matches!(i.method.as_deref(), Some("hnsw") | Some("ivfflat")))
     })
 }
 
@@ -396,7 +419,12 @@ fn diff_columns(old_t: &Table, new_t: &Table, ops: &mut Vec<Operation>) {
     }
 }
 
-fn diff_foreign_keys(old_t: &Table, new_t: &Table, add: &mut Vec<Operation>, drop: &mut Vec<Operation>) {
+fn diff_foreign_keys(
+    old_t: &Table,
+    new_t: &Table,
+    add: &mut Vec<Operation>,
+    drop: &mut Vec<Operation>,
+) {
     for fk in &new_t.foreign_keys {
         if !old_t.foreign_keys.iter().any(|f| f.name == fk.name) {
             add.push(Operation::AddForeignKey {
@@ -417,7 +445,12 @@ fn diff_foreign_keys(old_t: &Table, new_t: &Table, add: &mut Vec<Operation>, dro
     }
 }
 
-fn diff_indexes(old_t: &Table, new_t: &Table, create: &mut Vec<Operation>, drop: &mut Vec<Operation>) {
+fn diff_indexes(
+    old_t: &Table,
+    new_t: &Table,
+    create: &mut Vec<Operation>,
+    drop: &mut Vec<Operation>,
+) {
     for ix in &new_t.indexes {
         if !old_t.indexes.iter().any(|i| i.name == ix.name) {
             create.push(Operation::CreateIndex {
@@ -438,7 +471,12 @@ fn diff_indexes(old_t: &Table, new_t: &Table, create: &mut Vec<Operation>, drop:
     }
 }
 
-fn diff_triggers(old_t: &Table, new_t: &Table, create: &mut Vec<Operation>, drop: &mut Vec<Operation>) {
+fn diff_triggers(
+    old_t: &Table,
+    new_t: &Table,
+    create: &mut Vec<Operation>,
+    drop: &mut Vec<Operation>,
+) {
     // Postgres no garantiza CREATE OR REPLACE TRIGGER en todas las versiones, así
     // que un cambio de definición se trata como drop + create.
     for tg in &new_t.triggers {
@@ -482,39 +520,65 @@ pub fn apply_operation(model: &mut DatabaseModel, op: &Operation) {
         Operation::DropTable { schema, name } => model
             .tables
             .retain(|t| !(t.schema.as_deref() == schema.as_deref() && &t.name == name)),
-        Operation::AddColumn { schema, table, column } => {
+        Operation::AddColumn {
+            schema,
+            table,
+            column,
+        } => {
             if let Some(t) = find_mut(model, schema, table) {
                 t.columns.push(column.clone());
             }
         }
-        Operation::DropColumn { schema, table, name } => {
+        Operation::DropColumn {
+            schema,
+            table,
+            name,
+        } => {
             if let Some(t) = find_mut(model, schema, table) {
                 t.columns.retain(|c| &c.name != name);
             }
         }
-        Operation::AlterColumn { schema, table, new, .. } => {
+        Operation::AlterColumn {
+            schema, table, new, ..
+        } => {
             if let Some(t) = find_mut(model, schema, table) {
                 if let Some(c) = t.columns.iter_mut().find(|c| c.name == new.name) {
                     *c = new.clone();
                 }
             }
         }
-        Operation::AddForeignKey { schema, table, foreign_key } => {
+        Operation::AddForeignKey {
+            schema,
+            table,
+            foreign_key,
+        } => {
             if let Some(t) = find_mut(model, schema, table) {
                 t.foreign_keys.push(foreign_key.clone());
             }
         }
-        Operation::DropForeignKey { schema, table, name } => {
+        Operation::DropForeignKey {
+            schema,
+            table,
+            name,
+        } => {
             if let Some(t) = find_mut(model, schema, table) {
                 t.foreign_keys.retain(|f| &f.name != name);
             }
         }
-        Operation::CreateIndex { schema, table, index } => {
+        Operation::CreateIndex {
+            schema,
+            table,
+            index,
+        } => {
             if let Some(t) = find_mut(model, schema, table) {
                 t.indexes.push(index.clone());
             }
         }
-        Operation::DropIndex { schema, table, name } => {
+        Operation::DropIndex {
+            schema,
+            table,
+            name,
+        } => {
             if let Some(t) = find_mut(model, schema, table) {
                 t.indexes.retain(|i| &i.name != name);
             }
@@ -537,13 +601,21 @@ pub fn apply_operation(model: &mut DatabaseModel, op: &Operation) {
                 .functions
                 .retain(|f| !(f.schema.as_deref() == schema.as_deref() && &f.name == name));
         }
-        Operation::CreateTrigger { schema, table, trigger } => {
+        Operation::CreateTrigger {
+            schema,
+            table,
+            trigger,
+        } => {
             if let Some(t) = find_mut(model, schema, table) {
                 t.triggers.retain(|x| x.name != trigger.name);
                 t.triggers.push(trigger.clone());
             }
         }
-        Operation::DropTrigger { schema, table, name } => {
+        Operation::DropTrigger {
+            schema,
+            table,
+            name,
+        } => {
             if let Some(t) = find_mut(model, schema, table) {
                 t.triggers.retain(|x| &x.name != name);
             }
@@ -564,7 +636,11 @@ pub fn apply_operation(model: &mut DatabaseModel, op: &Operation) {
         }
         Operation::InsertData { schema, table, row } => {
             if let Some(t) = find_mut(model, schema, table) {
-                let pk = t.primary_key.as_ref().map(|p| p.columns.clone()).unwrap_or_default();
+                let pk = t
+                    .primary_key
+                    .as_ref()
+                    .map(|p| p.columns.clone())
+                    .unwrap_or_default();
                 let key = seed_key(row, &pk);
                 if !t.seed_data.iter().any(|r| seed_key(r, &pk) == key) {
                     t.seed_data.push(row.clone());
@@ -573,13 +649,26 @@ pub fn apply_operation(model: &mut DatabaseModel, op: &Operation) {
         }
         Operation::DeleteData { schema, table, key } => {
             if let Some(t) = find_mut(model, schema, table) {
-                let pk = t.primary_key.as_ref().map(|p| p.columns.clone()).unwrap_or_default();
+                let pk = t
+                    .primary_key
+                    .as_ref()
+                    .map(|p| p.columns.clone())
+                    .unwrap_or_default();
                 t.seed_data.retain(|r| &seed_key(r, &pk) != key);
             }
         }
-        Operation::UpdateData { schema, table, key, values } => {
+        Operation::UpdateData {
+            schema,
+            table,
+            key,
+            values,
+        } => {
             if let Some(t) = find_mut(model, schema, table) {
-                let pk = t.primary_key.as_ref().map(|p| p.columns.clone()).unwrap_or_default();
+                let pk = t
+                    .primary_key
+                    .as_ref()
+                    .map(|p| p.columns.clone())
+                    .unwrap_or_default();
                 if let Some(r) = t.seed_data.iter_mut().find(|r| &seed_key(r, &pk) == key) {
                     for (c, v) in values {
                         r.insert(c.clone(), v.clone());
@@ -687,8 +776,18 @@ mod tests {
         let mut to = DatabaseModel::empty();
         to.tables.push(table("Customer", &["Id", "Email"]));
         let ops = diff(&from, &to);
-        assert_eq!(ops.iter().filter(|o| matches!(o, Operation::AddColumn { .. })).count(), 1);
-        assert_eq!(ops.iter().filter(|o| matches!(o, Operation::DropColumn { .. })).count(), 1);
+        assert_eq!(
+            ops.iter()
+                .filter(|o| matches!(o, Operation::AddColumn { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|o| matches!(o, Operation::DropColumn { .. }))
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -712,21 +811,35 @@ mod tests {
     }
 
     fn func(name: &str, def: &str) -> crate::model::DbFunction {
-        crate::model::DbFunction { name: name.into(), schema: None, definition: def.into() }
+        crate::model::DbFunction {
+            name: name.into(),
+            schema: None,
+            definition: def.into(),
+        }
     }
 
     #[test]
     fn funcion_antes_que_trigger_al_crear() {
         let from = DatabaseModel::empty();
         let mut to = DatabaseModel::empty();
-        to.functions.push(func("normalize_body", "CREATE FUNCTION normalize_body() ..."));
+        to.functions.push(func(
+            "normalize_body",
+            "CREATE FUNCTION normalize_body() ...",
+        ));
         let mut t = table("documents", &["Id"]);
-        t.triggers.push(trig("trg_norm", "CREATE TRIGGER trg_norm ..."));
+        t.triggers
+            .push(trig("trg_norm", "CREATE TRIGGER trg_norm ..."));
         to.tables.push(t);
 
         let ops = diff(&from, &to);
-        let fpos = ops.iter().position(|o| matches!(o, Operation::CreateFunction { .. })).unwrap();
-        let tpos = ops.iter().position(|o| matches!(o, Operation::CreateTrigger { .. })).unwrap();
+        let fpos = ops
+            .iter()
+            .position(|o| matches!(o, Operation::CreateFunction { .. }))
+            .unwrap();
+        let tpos = ops
+            .iter()
+            .position(|o| matches!(o, Operation::CreateTrigger { .. }))
+            .unwrap();
         assert!(fpos < tpos, "la función debe crearse antes que el trigger");
     }
 
@@ -743,11 +856,27 @@ mod tests {
         to.tables.push(t1);
 
         let ops = diff(&from, &to);
-        assert_eq!(ops.iter().filter(|o| matches!(o, Operation::DropTrigger { .. })).count(), 1);
-        assert_eq!(ops.iter().filter(|o| matches!(o, Operation::CreateTrigger { .. })).count(), 1);
+        assert_eq!(
+            ops.iter()
+                .filter(|o| matches!(o, Operation::DropTrigger { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|o| matches!(o, Operation::CreateTrigger { .. }))
+                .count(),
+            1
+        );
         // El drop va antes que el create.
-        let dpos = ops.iter().position(|o| matches!(o, Operation::DropTrigger { .. })).unwrap();
-        let cpos = ops.iter().position(|o| matches!(o, Operation::CreateTrigger { .. })).unwrap();
+        let dpos = ops
+            .iter()
+            .position(|o| matches!(o, Operation::DropTrigger { .. }))
+            .unwrap();
+        let cpos = ops
+            .iter()
+            .position(|o| matches!(o, Operation::CreateTrigger { .. }))
+            .unwrap();
         assert!(dpos < cpos);
     }
 
@@ -793,7 +922,10 @@ mod tests {
 
         let ops = diff(&from, &to);
         let rebuild = ops.iter().find_map(|o| match o {
-            Operation::RebuildTable { table, copy_columns } => Some((table, copy_columns)),
+            Operation::RebuildTable {
+                table,
+                copy_columns,
+            } => Some((table, copy_columns)),
             _ => None,
         });
         let (rt, copy) = rebuild.expect("debe emitir RebuildTable");
@@ -817,7 +949,10 @@ mod tests {
         let mk = |rows: Vec<_>| {
             let mut m = DatabaseModel::empty();
             let mut t = table("Category", &["Id", "Name"]);
-            t.primary_key = Some(PrimaryKey { name: "PK".into(), columns: vec!["Id".into()] });
+            t.primary_key = Some(PrimaryKey {
+                name: "PK".into(),
+                columns: vec!["Id".into()],
+            });
             t.seed_data = rows;
             m.tables.push(t);
             m
@@ -826,18 +961,36 @@ mod tests {
         let from = mk(vec![row(1, "A"), row(2, "B")]);
         let to = mk(vec![row(1, "A"), row(2, "B2"), row(3, "C")]);
         let ops = diff(&from, &to);
-        assert_eq!(ops.iter().filter(|o| matches!(o, Operation::InsertData { .. })).count(), 1);
-        assert_eq!(ops.iter().filter(|o| matches!(o, Operation::UpdateData { .. })).count(), 1);
+        assert_eq!(
+            ops.iter()
+                .filter(|o| matches!(o, Operation::InsertData { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            ops.iter()
+                .filter(|o| matches!(o, Operation::UpdateData { .. }))
+                .count(),
+            1
+        );
         // y a la inversa hay un delete.
         let back = diff(&to, &from);
-        assert_eq!(back.iter().filter(|o| matches!(o, Operation::DeleteData { .. })).count(), 1);
+        assert_eq!(
+            back.iter()
+                .filter(|o| matches!(o, Operation::DeleteData { .. }))
+                .count(),
+            1
+        );
 
         // Idempotencia + reconstrucción.
         let mut rebuilt = DatabaseModel::empty();
         for op in &diff(&DatabaseModel::empty(), &to) {
             apply_operation(&mut rebuilt, op);
         }
-        assert!(diff(&rebuilt, &to).is_empty(), "seed reconstruido equivalente");
+        assert!(
+            diff(&rebuilt, &to).is_empty(),
+            "seed reconstruido equivalente"
+        );
     }
 
     #[test]
@@ -855,14 +1008,20 @@ mod tests {
         }
         assert_eq!(rebuilt.functions.len(), 1);
         assert_eq!(rebuilt.table(None, "documents").unwrap().triggers.len(), 1);
-        assert!(diff(&rebuilt, &target).is_empty(), "reconstrucción equivalente");
+        assert!(
+            diff(&rebuilt, &target).is_empty(),
+            "reconstrucción equivalente"
+        );
     }
 
     #[test]
     fn apply_operation_reconstruye_el_modelo() {
         let mut target = DatabaseModel::empty();
         let mut t = table("Customer", &["Id", "Name"]);
-        t.primary_key = Some(PrimaryKey { name: "PK_Customer".into(), columns: vec!["Id".into()] });
+        t.primary_key = Some(PrimaryKey {
+            name: "PK_Customer".into(),
+            columns: vec!["Id".into()],
+        });
         target.tables.push(t);
 
         // Reproducir las ops `up` sobre un modelo vacío debe dar el mismo modelo.
@@ -872,6 +1031,9 @@ mod tests {
             apply_operation(&mut rebuilt, op);
         }
         assert_eq!(rebuilt.table(None, "Customer").unwrap().columns.len(), 2);
-        assert!(diff(&rebuilt, &target).is_empty(), "reconstrucción equivalente");
+        assert!(
+            diff(&rebuilt, &target).is_empty(),
+            "reconstrucción equivalente"
+        );
     }
 }

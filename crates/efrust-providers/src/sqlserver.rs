@@ -90,8 +90,15 @@ impl SqlServerGenerator {
 
     fn add_foreign_key(&self, schema: Option<&str>, table: &str, fk: &ForeignKey) -> String {
         let cols: Vec<String> = fk.columns.iter().map(|c| self.quote_ident(c)).collect();
-        let pcols: Vec<String> = fk.principal_columns.iter().map(|c| self.quote_ident(c)).collect();
-        let principal = self.qualified(fk.principal_schema.as_deref().or(schema), &fk.principal_table);
+        let pcols: Vec<String> = fk
+            .principal_columns
+            .iter()
+            .map(|c| self.quote_ident(c))
+            .collect();
+        let principal = self.qualified(
+            fk.principal_schema.as_deref().or(schema),
+            &fk.principal_table,
+        );
         format!(
             "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}){};",
             self.qualified(schema, table),
@@ -106,7 +113,11 @@ impl SqlServerGenerator {
     fn create_index(&self, schema: Option<&str>, table: &str, index: &Index) -> String {
         let unique = if index.is_unique { "UNIQUE " } else { "" };
         let cols: Vec<String> = index.columns.iter().map(|c| self.quote_ident(c)).collect();
-        let filter = index.filter.as_ref().map(|f| format!(" WHERE {f}")).unwrap_or_default();
+        let filter = index
+            .filter
+            .as_ref()
+            .map(|f| format!(" WHERE {f}"))
+            .unwrap_or_default();
         format!(
             "CREATE {unique}INDEX {} ON {} ({}){filter};",
             self.quote_ident(&index.name),
@@ -181,35 +192,64 @@ impl SqlGenerator for SqlServerGenerator {
         let sql = match op {
             Operation::CreateTable { table } => vec![self.create_table(table)?],
             Operation::DropTable { schema, name } => {
-                vec![format!("DROP TABLE {};", self.qualified(schema.as_deref(), name))]
+                vec![format!(
+                    "DROP TABLE {};",
+                    self.qualified(schema.as_deref(), name)
+                )]
             }
-            Operation::AddColumn { schema, table, column } => vec![format!(
+            Operation::AddColumn {
+                schema,
+                table,
+                column,
+            } => vec![format!(
                 "ALTER TABLE {} ADD {};",
                 self.qualified(schema.as_deref(), table),
                 self.column_def(column)?
             )],
-            Operation::DropColumn { schema, table, name } => vec![format!(
+            Operation::DropColumn {
+                schema,
+                table,
+                name,
+            } => vec![format!(
                 "ALTER TABLE {} DROP COLUMN {};",
                 self.qualified(schema.as_deref(), table),
                 self.quote_ident(name)
             )],
-            Operation::AlterColumn { schema, table, new, .. } => vec![format!(
+            Operation::AlterColumn {
+                schema, table, new, ..
+            } => vec![format!(
                 "ALTER TABLE {} ALTER COLUMN {};",
                 self.qualified(schema.as_deref(), table),
                 self.column_def(new)?
             )],
-            Operation::AddForeignKey { schema, table, foreign_key } => {
+            Operation::AddForeignKey {
+                schema,
+                table,
+                foreign_key,
+            } => {
                 vec![self.add_foreign_key(schema.as_deref(), table, foreign_key)]
             }
-            Operation::DropForeignKey { schema, table, name } => vec![format!(
+            Operation::DropForeignKey {
+                schema,
+                table,
+                name,
+            } => vec![format!(
                 "ALTER TABLE {} DROP CONSTRAINT {};",
                 self.qualified(schema.as_deref(), table),
                 self.quote_ident(name)
             )],
-            Operation::CreateIndex { schema, table, index } => {
+            Operation::CreateIndex {
+                schema,
+                table,
+                index,
+            } => {
                 vec![self.create_index(schema.as_deref(), table, index)]
             }
-            Operation::DropIndex { schema, table, name } => vec![format!(
+            Operation::DropIndex {
+                schema,
+                table,
+                name,
+            } => vec![format!(
                 "DROP INDEX {} ON {};",
                 self.quote_ident(name),
                 self.qualified(schema.as_deref(), table)
@@ -222,9 +262,12 @@ impl SqlGenerator for SqlServerGenerator {
             Operation::DeleteData { schema, table, key } => {
                 self.emit_delete_data(schema.as_deref(), table, key)
             }
-            Operation::UpdateData { schema, table, key, values } => {
-                self.emit_update_data(schema.as_deref(), table, key, values)
-            }
+            Operation::UpdateData {
+                schema,
+                table,
+                key,
+                values,
+            } => self.emit_update_data(schema.as_deref(), table, key, values),
             Operation::EnsureExtension { .. }
             | Operation::CreateFunction { .. }
             | Operation::DropFunction { .. }

@@ -30,11 +30,15 @@ async fn round_trip_mysql_busqueda() {
     // Sanidad del origen: hay una columna generada y un índice FULLTEXT.
     let st = &src_model.tables[0];
     assert!(
-        st.columns.iter().any(|c| c.computed_sql.is_some() && c.computed_stored),
+        st.columns
+            .iter()
+            .any(|c| c.computed_sql.is_some() && c.computed_stored),
         "el origen debe tener una columna generada STORED"
     );
     assert!(
-        st.indexes.iter().any(|i| i.method.as_deref() == Some("fulltext")),
+        st.indexes
+            .iter()
+            .any(|i| i.method.as_deref() == Some("fulltext")),
         "el origen debe tener un índice FULLTEXT"
     );
 
@@ -61,6 +65,12 @@ async fn round_trip_mysql_busqueda() {
     dst_model.normalize();
 
     let dt = &dst_model.tables[0];
-    assert_eq!(st.columns, dt.columns, "columnas (incl. generada) preservadas");
-    assert_eq!(st.indexes, dt.indexes, "índices (incl. FULLTEXT) preservados");
+    assert_eq!(
+        st.columns, dt.columns,
+        "columnas (incl. generada) preservadas"
+    );
+    assert_eq!(
+        st.indexes, dt.indexes,
+        "índices (incl. FULLTEXT) preservados"
+    );
 }

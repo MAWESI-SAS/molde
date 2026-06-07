@@ -105,10 +105,15 @@ mod tests {
         pool.close().await;
 
         // 2. Leer el modelo de vuelta.
-        let model = reader::read_model(&url, Provider::Sqlite, None).await.unwrap();
+        let model = reader::read_model(&url, Provider::Sqlite, None)
+            .await
+            .unwrap();
         let customer = model.table(None, "Customer").expect("tabla Customer");
         assert_eq!(customer.columns.len(), 3);
-        assert!(customer.column("Id").unwrap().is_identity, "Id debe ser identidad");
+        assert!(
+            customer.column("Id").unwrap().is_identity,
+            "Id debe ser identidad"
+        );
         assert!(!customer.column("Name").unwrap().is_nullable);
         assert!(customer.column("Email").unwrap().is_nullable);
         assert_eq!(customer.primary_key.as_ref().unwrap().columns, vec!["Id"]);
@@ -155,7 +160,10 @@ mod tests {
                 col("Id", "System.Int32", false, true),
                 col("Age", age_clr, true, false),
             ],
-            primary_key: Some(PrimaryKey { name: "PK_Person".into(), columns: vec!["Id".into()] }),
+            primary_key: Some(PrimaryKey {
+                name: "PK_Person".into(),
+                columns: vec!["Id".into()],
+            }),
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
@@ -167,11 +175,20 @@ mod tests {
         new.tables.push(person("System.Int64")); // Age INTEGER
 
         install_default_drivers();
-        let pool = AnyPoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        let pool = AnyPoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await
+            .unwrap();
         let gen = efrust_providers::SqliteGenerator::new();
 
         // Crear la tabla vieja + una fila.
-        for stmt in gen.emit(&Operation::CreateTable { table: old.tables[0].clone() }).unwrap() {
+        for stmt in gen
+            .emit(&Operation::CreateTable {
+                table: old.tables[0].clone(),
+            })
+            .unwrap()
+        {
             sqlx::query(&stmt).execute(&pool).await.unwrap();
         }
         sqlx::query("INSERT INTO \"Person\" (\"Age\") VALUES ('42');")
@@ -181,7 +198,9 @@ mod tests {
 
         // Aplicar el diff (incluye RebuildTable).
         let ops = diff(&old, &new);
-        assert!(ops.iter().any(|o| matches!(o, Operation::RebuildTable { .. })));
+        assert!(ops
+            .iter()
+            .any(|o| matches!(o, Operation::RebuildTable { .. })));
         for stmt in gen.emit_all(&ops).unwrap() {
             sqlx::query(&stmt).execute(&pool).await.unwrap();
         }
@@ -196,7 +215,9 @@ mod tests {
         pool.close().await;
 
         // El modelo releído tiene la tabla reconstruida con 2 columnas.
-        let model = reader::read_model(&url, Provider::Sqlite, None).await.unwrap();
+        let model = reader::read_model(&url, Provider::Sqlite, None)
+            .await
+            .unwrap();
         assert_eq!(model.table(None, "Person").unwrap().columns.len(), 2);
 
         let _ = std::fs::remove_file(&path);

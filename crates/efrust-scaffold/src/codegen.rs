@@ -175,7 +175,10 @@ fn db_context(model: &DatabaseModel, opts: &CodegenOptions, has_db_objects: bool
     }
 
     let _ = writeln!(s);
-    let _ = writeln!(s, "    protected override void OnModelCreating(ModelBuilder modelBuilder)");
+    let _ = writeln!(
+        s,
+        "    protected override void OnModelCreating(ModelBuilder modelBuilder)"
+    );
     let _ = writeln!(s, "    {{");
     for (i, table) in model.tables.iter().enumerate() {
         if i > 0 {
@@ -185,9 +188,19 @@ fn db_context(model: &DatabaseModel, opts: &CodegenOptions, has_db_objects: bool
     }
     if has_db_objects {
         let _ = writeln!(s);
-        let _ = writeln!(s, "        // NOTA: esta base de datos contiene objetos que EF Core no modela");
-        let _ = writeln!(s, "        // (funciones, triggers e índices por expresión). Se exportaron a");
-        let _ = writeln!(s, "        // '{}.DbObjects.sql'; aplícalos fuera del modelo (p. ej. con", opts.context_name);
+        let _ = writeln!(
+            s,
+            "        // NOTA: esta base de datos contiene objetos que EF Core no modela"
+        );
+        let _ = writeln!(
+            s,
+            "        // (funciones, triggers e índices por expresión). Se exportaron a"
+        );
+        let _ = writeln!(
+            s,
+            "        // '{}.DbObjects.sql'; aplícalos fuera del modelo (p. ej. con",
+            opts.context_name
+        );
         let _ = writeln!(s, "        // migrationBuilder.Sql(...) en una migración).");
     }
 
@@ -195,7 +208,10 @@ fn db_context(model: &DatabaseModel, opts: &CodegenOptions, has_db_objects: bool
     let _ = writeln!(s, "        OnModelCreatingPartial(modelBuilder);");
     let _ = writeln!(s, "    }}");
     let _ = writeln!(s);
-    let _ = writeln!(s, "    partial void OnModelCreatingPartial(ModelBuilder modelBuilder);");
+    let _ = writeln!(
+        s,
+        "    partial void OnModelCreatingPartial(ModelBuilder modelBuilder);"
+    );
     let _ = writeln!(s, "}}");
     s
 }
@@ -207,13 +223,21 @@ fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel, pro
 
     if let Some(pk) = &table.primary_key {
         let key = key_selector(&pk.columns);
-        let _ = writeln!(s, "            entity.HasKey({key}).HasName(\"{}\");", pk.name);
+        let _ = writeln!(
+            s,
+            "            entity.HasKey({key}).HasName(\"{}\");",
+            pk.name
+        );
     }
 
     // Tabla (siempre, con el nombre de BD; con esquema si difiere del por defecto).
     match (&table.schema, &model.default_schema) {
         (Some(sc), def) if Some(sc) != def.as_ref() => {
-            let _ = writeln!(s, "            entity.ToTable(\"{}\", \"{sc}\");", table.name);
+            let _ = writeln!(
+                s,
+                "            entity.ToTable(\"{}\", \"{sc}\");",
+                table.name
+            );
         }
         _ => {
             let _ = writeln!(s, "            entity.ToTable(\"{}\");", table.name);
@@ -271,7 +295,11 @@ fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel, pro
                 let _ = write!(chain, ".HasOperators({ops})");
             }
         }
-        let _ = writeln!(s, "            entity.HasIndex({target}, \"{}\"){chain};", idx.name);
+        let _ = writeln!(
+            s,
+            "            entity.HasIndex({target}, \"{}\"){chain};",
+            idx.name
+        );
     }
 
     // Relaciones (lado dependiente): HasOne / WithMany.
@@ -279,7 +307,10 @@ fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel, pro
         let ref_nav = reference_nav_name(table, fk);
         let coll_nav = collection_nav_name(table, &fk.principal_table, fk);
         let fk_target = key_selector_with(&fk.columns, "d");
-        let _ = writeln!(s, "            entity.HasOne(d => d.{ref_nav}).WithMany(p => p.{coll_nav})");
+        let _ = writeln!(
+            s,
+            "            entity.HasOne(d => d.{ref_nav}).WithMany(p => p.{coll_nav})"
+        );
         let _ = writeln!(s, "                .HasForeignKey({fk_target})");
         if let Some(behavior) = delete_behavior(fk.on_delete) {
             let _ = writeln!(s, "                .OnDelete(DeleteBehavior.{behavior})");
@@ -297,7 +328,11 @@ fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel, pro
                 .map(|(col, v)| format!("{} = {}", prop_name(col), cs_value(v)))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let sep = if i + 1 < table.seed_data.len() { "," } else { "" };
+            let sep = if i + 1 < table.seed_data.len() {
+                ","
+            } else {
+                ""
+            };
             let _ = writeln!(s, "                new {cls} {{ {inits} }}{sep}");
         }
         let _ = writeln!(s, "            );");
@@ -338,7 +373,10 @@ fn key_selector_with(columns: &[String], param: &str) -> String {
 
 // --- Helpers de navegación ---------------------------------------------------
 
-fn incoming_fks<'a>(model: &'a DatabaseModel, table_name: &str) -> Vec<(&'a Table, &'a ForeignKey)> {
+fn incoming_fks<'a>(
+    model: &'a DatabaseModel,
+    table_name: &str,
+) -> Vec<(&'a Table, &'a ForeignKey)> {
     let mut out = Vec::new();
     for t in &model.tables {
         for fk in &t.foreign_keys {
@@ -360,7 +398,12 @@ fn reference_nav_name(table: &Table, fk: &ForeignKey) -> String {
     if same <= 1 {
         principal
     } else {
-        format!("{principal}{}", strip_id(&prop_name(fk.columns.first().map(String::as_str).unwrap_or(""))))
+        format!(
+            "{principal}{}",
+            strip_id(&prop_name(
+                fk.columns.first().map(String::as_str).unwrap_or("")
+            ))
+        )
     }
 }
 
@@ -374,7 +417,12 @@ fn collection_nav_name(dependent: &Table, principal_name: &str, fk: &ForeignKey)
     if same <= 1 {
         base
     } else {
-        format!("{base}{}", strip_id(&prop_name(fk.columns.first().map(String::as_str).unwrap_or(""))))
+        format!(
+            "{base}{}",
+            strip_id(&prop_name(
+                fk.columns.first().map(String::as_str).unwrap_or("")
+            ))
+        )
     }
 }
 
@@ -385,7 +433,10 @@ fn fk_required(table: &Table, fk: &ForeignKey) -> bool {
 }
 
 fn strip_id(name: &str) -> String {
-    name.strip_suffix("Id").filter(|s| !s.is_empty()).unwrap_or(name).to_string()
+    name.strip_suffix("Id")
+        .filter(|s| !s.is_empty())
+        .unwrap_or(name)
+        .to_string()
 }
 
 fn delete_behavior(action: ReferentialAction) -> Option<&'static str> {
@@ -434,8 +485,14 @@ fn db_objects_sql(model: &DatabaseModel, provider: Provider) -> Option<String> {
     let gen = provider.generator();
     let mut s = String::new();
     let _ = writeln!(s, "-- Objetos de base de datos no modelables por EF Core.");
-    let _ = writeln!(s, "-- Generado por `efrust scaffold`. Aplicar fuera del modelo EF");
-    let _ = writeln!(s, "-- (p. ej. con migrationBuilder.Sql(...) en una migración).");
+    let _ = writeln!(
+        s,
+        "-- Generado por `efrust scaffold`. Aplicar fuera del modelo EF"
+    );
+    let _ = writeln!(
+        s,
+        "-- (p. ej. con migrationBuilder.Sql(...) en una migración)."
+    );
 
     if !model.functions.is_empty() {
         let _ = writeln!(s, "\n-- Funciones");
@@ -509,8 +566,14 @@ mod tests {
             schema: None,
             clr_type: None,
             comment: None,
-            columns: vec![col("Id", "System.Int32", false, None), col("Name", "System.String", false, Some(200))],
-            primary_key: Some(PrimaryKey { name: "PK_Customer".into(), columns: vec!["Id".into()] }),
+            columns: vec![
+                col("Id", "System.Int32", false, None),
+                col("Name", "System.String", false, Some(200)),
+            ],
+            primary_key: Some(PrimaryKey {
+                name: "PK_Customer".into(),
+                columns: vec!["Id".into()],
+            }),
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
@@ -521,8 +584,14 @@ mod tests {
             schema: None,
             clr_type: None,
             comment: None,
-            columns: vec![col("Id", "System.Int32", false, None), col("CustomerId", "System.Int32", false, None)],
-            primary_key: Some(PrimaryKey { name: "PK_Order".into(), columns: vec!["Id".into()] }),
+            columns: vec![
+                col("Id", "System.Int32", false, None),
+                col("CustomerId", "System.Int32", false, None),
+            ],
+            primary_key: Some(PrimaryKey {
+                name: "PK_Order".into(),
+                columns: vec!["Id".into()],
+            }),
             foreign_keys: vec![ForeignKey {
                 name: "FK_Order_Customer".into(),
                 columns: vec!["CustomerId".into()],
@@ -531,7 +600,15 @@ mod tests {
                 principal_columns: vec!["Id".into()],
                 on_delete: ReferentialAction::Cascade,
             }],
-            indexes: vec![Index { name: "IX_Order_CustomerId".into(), columns: vec!["CustomerId".into()], is_unique: false, filter: None, method: None, operators: vec![], expression: None }],
+            indexes: vec![Index {
+                name: "IX_Order_CustomerId".into(),
+                columns: vec!["CustomerId".into()],
+                is_unique: false,
+                filter: None,
+                method: None,
+                operators: vec![],
+                expression: None,
+            }],
             triggers: vec![],
             seed_data: vec![],
         });
@@ -541,11 +618,25 @@ mod tests {
     #[test]
     fn genera_navegaciones_y_relacion() {
         let files = generate(&model(), &CodegenOptions::default());
-        let order = &files.iter().find(|f| f.relative_path == "Order.cs").unwrap().contents;
+        let order = &files
+            .iter()
+            .find(|f| f.relative_path == "Order.cs")
+            .unwrap()
+            .contents;
         assert!(order.contains("public virtual Customer Customer { get; set; } = null!;"));
-        let customer = &files.iter().find(|f| f.relative_path == "Customer.cs").unwrap().contents;
-        assert!(customer.contains("public virtual ICollection<Order> Orders { get; set; } = new List<Order>();"));
-        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
+        let customer = &files
+            .iter()
+            .find(|f| f.relative_path == "Customer.cs")
+            .unwrap()
+            .contents;
+        assert!(customer.contains(
+            "public virtual ICollection<Order> Orders { get; set; } = new List<Order>();"
+        ));
+        let ctx = &files
+            .iter()
+            .find(|f| f.relative_path == "AppDbContext.cs")
+            .unwrap()
+            .contents;
         assert!(ctx.contains("entity.HasOne(d => d.Customer).WithMany(p => p.Orders)"));
         assert!(ctx.contains(".HasForeignKey(d => d.CustomerId)"));
         assert!(ctx.contains(".HasConstraintName(\"FK_Order_Customer\");"));
@@ -563,7 +654,10 @@ mod tests {
                 col("id", "System.Int32", false, None),
                 col("created_at", "System.DateTime", false, None),
             ],
-            primary_key: Some(PrimaryKey { name: "pk_customer_order".into(), columns: vec!["id".into()] }),
+            primary_key: Some(PrimaryKey {
+                name: "pk_customer_order".into(),
+                columns: vec!["id".into()],
+            }),
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
@@ -571,12 +665,20 @@ mod tests {
         });
         let files = generate(&m, &CodegenOptions::default());
 
-        let entity = &files.iter().find(|f| f.relative_path == "CustomerOrder.cs").unwrap().contents;
+        let entity = &files
+            .iter()
+            .find(|f| f.relative_path == "CustomerOrder.cs")
+            .unwrap()
+            .contents;
         assert!(entity.contains("public partial class CustomerOrder"));
         assert!(entity.contains("public int Id { get; set; }"));
         assert!(entity.contains("public DateTime CreatedAt { get; set; }"));
 
-        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
+        let ctx = &files
+            .iter()
+            .find(|f| f.relative_path == "AppDbContext.cs")
+            .unwrap()
+            .contents;
         assert!(ctx.contains("public virtual DbSet<CustomerOrder> CustomerOrders"));
         assert!(ctx.contains("entity.ToTable(\"customer_order\");"));
         assert!(ctx.contains("entity.HasKey(e => e.Id).HasName(\"pk_customer_order\");"));
@@ -653,15 +755,29 @@ mod tests {
     #[test]
     fn mapea_tipos_vector_y_tsvector() {
         let files = generate(&search_model(), &CodegenOptions::default());
-        let doc = &files.iter().find(|f| f.relative_path == "Document.cs").unwrap().contents;
-        assert!(doc.contains("public Pgvector.Vector Embedding { get; set; } = null!;"), "got: {doc}");
-        assert!(doc.contains("public NpgsqlTypes.NpgsqlTsVector Search { get; set; } = null!;"), "got: {doc}");
+        let doc = &files
+            .iter()
+            .find(|f| f.relative_path == "Document.cs")
+            .unwrap()
+            .contents;
+        assert!(
+            doc.contains("public Pgvector.Vector Embedding { get; set; } = null!;"),
+            "got: {doc}"
+        );
+        assert!(
+            doc.contains("public NpgsqlTypes.NpgsqlTsVector Search { get; set; } = null!;"),
+            "got: {doc}"
+        );
     }
 
     #[test]
     fn columna_generada_emite_has_computed_column_sql() {
         let files = generate(&search_model(), &CodegenOptions::default());
-        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
+        let ctx = &files
+            .iter()
+            .find(|f| f.relative_path == "AppDbContext.cs")
+            .unwrap()
+            .contents;
         assert!(ctx.contains(
             "entity.Property(e => e.Search).HasColumnName(\"search\").HasComputedColumnSql(\"to_tsvector('english'::regconfig, body)\", stored: true);"
         ), "got: {ctx}");
@@ -670,7 +786,11 @@ mod tests {
     #[test]
     fn indice_vectorial_emite_metodo_y_operadores() {
         let files = generate(&search_model(), &CodegenOptions::default());
-        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
+        let ctx = &files
+            .iter()
+            .find(|f| f.relative_path == "AppDbContext.cs")
+            .unwrap()
+            .contents;
         assert!(ctx.contains(
             "entity.HasIndex(e => e.Embedding, \"ix_documents_embedding\").HasMethod(\"hnsw\").HasOperators(\"vector_cosine_ops\");"
         ), "got: {ctx}");
@@ -691,7 +811,10 @@ mod tests {
                 col("id", "System.Int32", false, None),
                 col("name", "System.String", false, Some(50)),
             ],
-            primary_key: Some(PrimaryKey { name: "pk".into(), columns: vec!["id".into()] }),
+            primary_key: Some(PrimaryKey {
+                name: "pk".into(),
+                columns: vec!["id".into()],
+            }),
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
@@ -709,7 +832,10 @@ mod tests {
             .unwrap()
             .contents;
         assert!(ctx.contains("entity.HasData("), "got: {ctx}");
-        assert!(ctx.contains("new Category { Id = 1, Name = \"Beverages\" }"), "got: {ctx}");
+        assert!(
+            ctx.contains("new Category { Id = 1, Name = \"Beverages\" }"),
+            "got: {ctx}"
+        );
     }
 
     #[test]
@@ -721,17 +847,33 @@ mod tests {
             clr_type: None,
             comment: None,
             columns: vec![col("id", "System.Int32", false, None)],
-            primary_key: Some(PrimaryKey { name: "pk".into(), columns: vec!["id".into()] }),
+            primary_key: Some(PrimaryKey {
+                name: "pk".into(),
+                columns: vec!["id".into()],
+            }),
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
             seed_data: vec![],
         });
         let files = generate(&m, &CodegenOptions::default());
-        assert!(files.iter().any(|f| f.relative_path == "Document.cs"), "clase singular");
-        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
-        assert!(ctx.contains("public virtual DbSet<Document> Documents"), "DbSet plural; got: {ctx}");
-        assert!(ctx.contains("entity.ToTable(\"documents\");"), "ToTable conserva el nombre de BD");
+        assert!(
+            files.iter().any(|f| f.relative_path == "Document.cs"),
+            "clase singular"
+        );
+        let ctx = &files
+            .iter()
+            .find(|f| f.relative_path == "AppDbContext.cs")
+            .unwrap()
+            .contents;
+        assert!(
+            ctx.contains("public virtual DbSet<Document> Documents"),
+            "DbSet plural; got: {ctx}"
+        );
+        assert!(
+            ctx.contains("entity.ToTable(\"documents\");"),
+            "ToTable conserva el nombre de BD"
+        );
     }
 
     #[test]
@@ -747,7 +889,10 @@ mod tests {
                 col("id", "System.Int32", false, None),
                 col("body", "System.String", true, None),
             ],
-            primary_key: Some(PrimaryKey { name: "pk".into(), columns: vec!["id".into()] }),
+            primary_key: Some(PrimaryKey {
+                name: "pk".into(),
+                columns: vec!["id".into()],
+            }),
             foreign_keys: vec![],
             indexes: vec![Index {
                 name: "ft_body".into(),
@@ -761,11 +906,21 @@ mod tests {
             triggers: vec![],
             seed_data: vec![],
         });
-        let opts = CodegenOptions { provider: efrust_providers::Provider::MySql, ..Default::default() };
+        let opts = CodegenOptions {
+            provider: efrust_providers::Provider::MySql,
+            ..Default::default()
+        };
         let files = generate(&m, &opts);
-        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
+        let ctx = &files
+            .iter()
+            .find(|f| f.relative_path == "AppDbContext.cs")
+            .unwrap()
+            .contents;
         // No se emite HasMethod (idiom Npgsql) ni el índice fulltext en Fluent.
-        assert!(!ctx.contains("HasMethod"), "MySQL no debe usar HasMethod: {ctx}");
+        assert!(
+            !ctx.contains("HasMethod"),
+            "MySQL no debe usar HasMethod: {ctx}"
+        );
         assert!(!ctx.contains("ft_body"), "el fulltext no va a Fluent");
         // Va al artefacto .sql con dialecto MySQL (backticks + FULLTEXT).
         let sql = &files
@@ -773,7 +928,10 @@ mod tests {
             .find(|f| f.relative_path == "AppDbContext.DbObjects.sql")
             .expect("artefacto .sql")
             .contents;
-        assert!(sql.contains("CREATE FULLTEXT INDEX `ft_body` ON `documents` (`body`);"), "got: {sql}");
+        assert!(
+            sql.contains("CREATE FULLTEXT INDEX `ft_body` ON `documents` (`body`);"),
+            "got: {sql}"
+        );
     }
 
     #[test]
@@ -784,11 +942,21 @@ mod tests {
             .find(|f| f.relative_path == "AppDbContext.DbObjects.sql")
             .expect("debe existir el artefacto .sql")
             .contents;
-        assert!(sql.contains("CREATE OR REPLACE FUNCTION public.normalize_body()"), "got: {sql}");
+        assert!(
+            sql.contains("CREATE OR REPLACE FUNCTION public.normalize_body()"),
+            "got: {sql}"
+        );
         assert!(sql.contains("CREATE INDEX \"ix_documents_fts\" ON \"public\".\"documents\" USING gin (to_tsvector('english'::regconfig, body));"), "got: {sql}");
-        assert!(sql.contains("CREATE TRIGGER trg_normalize BEFORE INSERT ON public.documents"), "got: {sql}");
+        assert!(
+            sql.contains("CREATE TRIGGER trg_normalize BEFORE INSERT ON public.documents"),
+            "got: {sql}"
+        );
         // El context referencia el artefacto.
-        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
+        let ctx = &files
+            .iter()
+            .find(|f| f.relative_path == "AppDbContext.cs")
+            .unwrap()
+            .contents;
         assert!(ctx.contains("AppDbContext.DbObjects.sql"));
     }
 }

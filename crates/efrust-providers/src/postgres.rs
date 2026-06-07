@@ -46,7 +46,11 @@ impl PostgresGenerator {
         }
         // Columna computada/generada (p. ej. tsvector STORED). Excluye default.
         if let Some(expr) = &column.computed_sql {
-            let kind = if column.computed_stored { " STORED" } else { "" };
+            let kind = if column.computed_stored {
+                " STORED"
+            } else {
+                ""
+            };
             parts.push(format!("GENERATED ALWAYS AS ({expr}){kind}"));
         }
         if !column.is_nullable {
@@ -137,19 +141,32 @@ impl SqlGenerator for PostgresGenerator {
         let sql = match op {
             Operation::CreateTable { table } => vec![self.create_table(table)?],
             Operation::DropTable { schema, name } => {
-                vec![format!("DROP TABLE {};", self.qualified(schema.as_deref(), name))]
+                vec![format!(
+                    "DROP TABLE {};",
+                    self.qualified(schema.as_deref(), name)
+                )]
             }
-            Operation::AddColumn { schema, table, column } => vec![format!(
+            Operation::AddColumn {
+                schema,
+                table,
+                column,
+            } => vec![format!(
                 "ALTER TABLE {} ADD COLUMN {};",
                 self.qualified(schema.as_deref(), table),
                 self.column_def(column)?
             )],
-            Operation::DropColumn { schema, table, name } => vec![format!(
+            Operation::DropColumn {
+                schema,
+                table,
+                name,
+            } => vec![format!(
                 "ALTER TABLE {} DROP COLUMN {};",
                 self.qualified(schema.as_deref(), table),
                 self.quote_ident(name)
             )],
-            Operation::AlterColumn { schema, table, new, .. } => {
+            Operation::AlterColumn {
+                schema, table, new, ..
+            } => {
                 let qt = self.qualified(schema.as_deref(), table);
                 let qc = self.quote_ident(&new.name);
                 let ty = self.store_type_for(new)?;
@@ -163,32 +180,57 @@ impl SqlGenerator for PostgresGenerator {
                     format!("ALTER TABLE {qt} {null};"),
                 ]
             }
-            Operation::AddForeignKey { schema, table, foreign_key } => {
+            Operation::AddForeignKey {
+                schema,
+                table,
+                foreign_key,
+            } => {
                 vec![self.add_foreign_key(schema.as_deref(), table, foreign_key)]
             }
-            Operation::DropForeignKey { schema, table, name } => vec![format!(
+            Operation::DropForeignKey {
+                schema,
+                table,
+                name,
+            } => vec![format!(
                 "ALTER TABLE {} DROP CONSTRAINT {};",
                 self.qualified(schema.as_deref(), table),
                 self.quote_ident(name)
             )],
-            Operation::CreateIndex { schema, table, index } => {
+            Operation::CreateIndex {
+                schema,
+                table,
+                index,
+            } => {
                 vec![self.create_index(schema.as_deref(), table, index)]
             }
             Operation::DropIndex { schema, name, .. } => {
                 // En Postgres los índices viven en el esquema de su tabla.
-                vec![format!("DROP INDEX {};", self.qualified(schema.as_deref(), name))]
+                vec![format!(
+                    "DROP INDEX {};",
+                    self.qualified(schema.as_deref(), name)
+                )]
             }
             Operation::EnsureExtension { name } => {
-                vec![format!("CREATE EXTENSION IF NOT EXISTS {};", self.quote_ident(name))]
+                vec![format!(
+                    "CREATE EXTENSION IF NOT EXISTS {};",
+                    self.quote_ident(name)
+                )]
             }
             // Funciones y triggers se preservan como SQL crudo (no modelables por
             // EF). La definición ya es DDL Postgres válido (pg_get_*def).
             Operation::CreateFunction { function } => vec![function.definition.clone()],
             Operation::DropFunction { schema, name } => {
-                vec![format!("DROP FUNCTION IF EXISTS {};", self.qualified(schema.as_deref(), name))]
+                vec![format!(
+                    "DROP FUNCTION IF EXISTS {};",
+                    self.qualified(schema.as_deref(), name)
+                )]
             }
             Operation::CreateTrigger { trigger, .. } => vec![trigger.definition.clone()],
-            Operation::DropTrigger { schema, table, name } => vec![format!(
+            Operation::DropTrigger {
+                schema,
+                table,
+                name,
+            } => vec![format!(
                 "DROP TRIGGER IF EXISTS {} ON {};",
                 self.quote_ident(name),
                 self.qualified(schema.as_deref(), table)
@@ -202,9 +244,12 @@ impl SqlGenerator for PostgresGenerator {
             Operation::DeleteData { schema, table, key } => {
                 self.emit_delete_data(schema.as_deref(), table, key)
             }
-            Operation::UpdateData { schema, table, key, values } => {
-                self.emit_update_data(schema.as_deref(), table, key, values)
-            }
+            Operation::UpdateData {
+                schema,
+                table,
+                key,
+                values,
+            } => self.emit_update_data(schema.as_deref(), table, key, values),
         };
         Ok(sql)
     }
@@ -213,7 +258,11 @@ impl SqlGenerator for PostgresGenerator {
 impl PostgresGenerator {
     fn add_foreign_key(&self, schema: Option<&str>, table: &str, fk: &ForeignKey) -> String {
         let cols: Vec<String> = fk.columns.iter().map(|c| self.quote_ident(c)).collect();
-        let pcols: Vec<String> = fk.principal_columns.iter().map(|c| self.quote_ident(c)).collect();
+        let pcols: Vec<String> = fk
+            .principal_columns
+            .iter()
+            .map(|c| self.quote_ident(c))
+            .collect();
         let principal = self.qualified(
             fk.principal_schema.as_deref().or(schema),
             &fk.principal_table,

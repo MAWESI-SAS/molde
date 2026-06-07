@@ -14,7 +14,11 @@ fn deserializa_salida_real_del_sidecar() {
 
     assert_eq!(model.format_version, 1);
     assert!(
-        model.product_version.as_deref().unwrap_or("").starts_with("9."),
+        model
+            .product_version
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("9."),
         "product_version proviene del assembly de EF Core 9"
     );
     assert_eq!(model.tables.len(), 2);

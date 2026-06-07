@@ -13,7 +13,10 @@ use serde_json::Value;
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
     #[error("operación aún no soportada por el provider '{provider}': {detail}")]
-    Unsupported { provider: &'static str, detail: String },
+    Unsupported {
+        provider: &'static str,
+        detail: String,
+    },
     #[error("no se pudo mapear el tipo CLR '{clr}' (columna '{column}')")]
     UnmappedType { clr: String, column: String },
 }
@@ -130,7 +133,10 @@ pub trait SqlGenerator {
         key: &BTreeMap<String, Value>,
     ) -> Vec<String> {
         let pred = self.key_predicate(key);
-        vec![format!("DELETE FROM {} WHERE {pred};", self.qualify(schema, table))]
+        vec![format!(
+            "DELETE FROM {} WHERE {pred};",
+            self.qualify(schema, table)
+        )]
     }
 
     /// `UPDATE` de los valores no-clave de una fila sembrada.

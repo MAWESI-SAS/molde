@@ -6,7 +6,9 @@
 
 use std::collections::BTreeMap;
 
-use efrust_core::model::{Column, DatabaseModel, ForeignKey, Index, PrimaryKey, ReferentialAction, Table};
+use efrust_core::model::{
+    Column, DatabaseModel, ForeignKey, Index, PrimaryKey, ReferentialAction, Table,
+};
 use efrust_providers::Provider;
 use sqlx::any::{install_default_drivers, AnyPoolOptions};
 use sqlx::{AnyPool, Row};
@@ -39,7 +41,10 @@ pub async fn read_model(
     }
 
     install_default_drivers();
-    let pool = AnyPoolOptions::new().max_connections(1).connect(url).await?;
+    let pool = AnyPoolOptions::new()
+        .max_connections(1)
+        .connect(url)
+        .await?;
     match provider {
         Provider::Sqlite => read_sqlite(&pool).await,
         Provider::Postgres => read_postgres(&pool, schema.unwrap_or("public")).await,
@@ -344,7 +349,11 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
 
         // Columna generada (STORED): se preserva la expresión para round-trip.
         let computed = is_generated.eq_ignore_ascii_case("ALWAYS");
-        let computed_sql = if computed { generation_expression } else { None };
+        let computed_sql = if computed {
+            generation_expression
+        } else {
+            None
+        };
 
         // pgvector pierde la dimensión vía information_schema; usar format_type.
         let store_type = if udt_name == "vector" {
@@ -490,7 +499,11 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
             name: r.try_get("index_name")?,
             columns,
             is_unique: is_unique != 0,
-            filter: if filter.is_empty() { None } else { Some(filter) },
+            filter: if filter.is_empty() {
+                None
+            } else {
+                Some(filter)
+            },
             method,
             operators,
             expression,
@@ -542,10 +555,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         });
 
         // Funciones de usuario referenciadas (no de extensiones ni del catálogo).
-        if func_is_ext == 0
-            && func_schema != "pg_catalog"
-            && func_schema != "information_schema"
-        {
+        if func_is_ext == 0 && func_schema != "pg_catalog" && func_schema != "information_schema" {
             if let Some(fd) = func_def {
                 functions
                     .entry((Some(func_schema.clone()), func_name.clone()))
@@ -566,7 +576,10 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
 /// Extrae (columnas, operator-classes, expresión) del `CREATE INDEX` textual que
 /// devuelve `pg_get_indexdef`. Para índices por expresión devuelve la expresión
 /// cruda y deja las columnas vacías.
-fn parse_pg_index_keys(indexdef: &str, has_expr: bool) -> (Vec<String>, Vec<String>, Option<String>) {
+fn parse_pg_index_keys(
+    indexdef: &str,
+    has_expr: bool,
+) -> (Vec<String>, Vec<String>, Option<String>) {
     // La lista de claves es el contenido entre el primer '(' tras `USING ...` y
     // su ')' balanceado.
     let Some(open) = indexdef.find('(') else {
@@ -656,7 +669,10 @@ fn split_top_level(s: &str) -> Vec<String> {
 /// Decodifica los flags `pg_trigger.tgtype` a (timing, eventos).
 fn parse_pg_trigger_type(
     tgtype: i32,
-) -> (efrust_core::model::TriggerTiming, Vec<efrust_core::model::TriggerEvent>) {
+) -> (
+    efrust_core::model::TriggerTiming,
+    Vec<efrust_core::model::TriggerEvent>,
+) {
     use efrust_core::model::{TriggerEvent, TriggerTiming};
     let timing = if tgtype & (1 << 1) != 0 {
         TriggerTiming::Before
@@ -837,15 +853,19 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
             None
         };
         let max_length = match data_type.as_str() {
-            "varchar" | "char" | "varbinary" | "binary" => {
-                max_len.filter(|n| *n > 0 && *n <= i32::MAX as i64).map(|n| n as i32)
-            }
+            "varchar" | "char" | "varbinary" | "binary" => max_len
+                .filter(|n| *n > 0 && *n <= i32::MAX as i64)
+                .map(|n| n as i32),
             _ => None,
         };
 
         table.columns.push(Column {
             name: my_str(&r, "COLUMN_NAME")?,
-            store_type: Some(if column_type.is_empty() { data_type.clone() } else { column_type }),
+            store_type: Some(if column_type.is_empty() {
+                data_type.clone()
+            } else {
+                column_type
+            }),
             clr_type: Some(mysql_clr(&data_type).to_string()),
             is_nullable: is_nullable.eq_ignore_ascii_case("YES"),
             is_identity: identity,
@@ -977,7 +997,11 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
 // ---------------------------------------------------------------------------
 
 async fn ss_query(client: &mut SsClient, sql: &str) -> Result<Vec<tiberius::Row>, ReadError> {
-    Ok(client.simple_query(sql.to_string()).await?.into_first_result().await?)
+    Ok(client
+        .simple_query(sql.to_string())
+        .await?
+        .into_first_result()
+        .await?)
 }
 
 async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadError> {
@@ -1123,7 +1147,10 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
         let Some(table) = tables.get_mut(table_name) else {
             continue;
         };
-        let constraint = r.get::<&str, _>("constraint_name").unwrap_or("").to_string();
+        let constraint = r
+            .get::<&str, _>("constraint_name")
+            .unwrap_or("")
+            .to_string();
         let column = r.get::<&str, _>("column_name").unwrap_or("").to_string();
         let pk = table.primary_key.get_or_insert_with(|| PrimaryKey {
             name: constraint,
@@ -1160,7 +1187,10 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
         let ref_table = r.get::<&str, _>("ref_table").unwrap_or("").to_string();
         let ref_column = r.get::<&str, _>("ref_column").unwrap_or("").to_string();
         // SQL Server usa NO_ACTION/SET_NULL… con guion bajo.
-        let delete_rule = r.get::<&str, _>("delete_rule").unwrap_or("").replace('_', " ");
+        let delete_rule = r
+            .get::<&str, _>("delete_rule")
+            .unwrap_or("")
+            .replace('_', " ");
 
         match table.foreign_keys.iter_mut().find(|f| f.name == name) {
             Some(fk) => {
@@ -1258,9 +1288,12 @@ async fn read_sqlserver_fulltext(client: &mut SsClient, sc: &str) -> Vec<String>
         let column_name = r.get::<&str, _>("column_name").unwrap_or("").to_string();
         let key_index = r.get::<&str, _>("key_index").unwrap_or("").to_string();
         let catalog = r.get::<&str, _>("catalog_name").unwrap_or("").to_string();
-        let entry = by_table
-            .entry(table_name.clone())
-            .or_insert((schema_name, key_index, catalog, Vec::new()));
+        let entry = by_table.entry(table_name.clone()).or_insert((
+            schema_name,
+            key_index,
+            catalog,
+            Vec::new(),
+        ));
         entry.3.push(column_name);
     }
 
@@ -1273,7 +1306,11 @@ async fn read_sqlserver_fulltext(client: &mut SsClient, sc: &str) -> Vec<String>
                  CREATE FULLTEXT CATALOG [{catalog}];"
             ));
         }
-        let col_list = cols.iter().map(|c| format!("[{c}]")).collect::<Vec<_>>().join(", ");
+        let col_list = cols
+            .iter()
+            .map(|c| format!("[{c}]"))
+            .collect::<Vec<_>>()
+            .join(", ");
         out.push(format!(
             "CREATE FULLTEXT INDEX ON [{schema_name}].[{table}] ({col_list}) \
              KEY INDEX [{key_index}] ON [{catalog}];"
@@ -1282,7 +1319,12 @@ async fn read_sqlserver_fulltext(client: &mut SsClient, sc: &str) -> Vec<String>
     out
 }
 
-fn ss_store_type(data_type: &str, max_len: Option<i32>, prec: Option<i32>, scale: Option<i32>) -> String {
+fn ss_store_type(
+    data_type: &str,
+    max_len: Option<i32>,
+    prec: Option<i32>,
+    scale: Option<i32>,
+) -> String {
     match data_type {
         "nvarchar" | "varchar" | "nchar" | "char" | "varbinary" | "binary" => match max_len {
             Some(-1) => format!("{data_type}(max)"),

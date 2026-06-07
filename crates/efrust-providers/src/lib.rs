@@ -206,7 +206,9 @@ mod tests {
              FOREIGN KEY (\"CustomerId\") REFERENCES \"Customer\" (\"Id\") ON DELETE CASCADE;"
         ));
         let ix = gen.emit(&index_op()).unwrap().join("\n");
-        assert!(ix.contains("CREATE UNIQUE INDEX \"IX_Order_CustomerId\" ON \"Order\" (\"CustomerId\");"));
+        assert!(ix.contains(
+            "CREATE UNIQUE INDEX \"IX_Order_CustomerId\" ON \"Order\" (\"CustomerId\");"
+        ));
     }
 
     #[test]
@@ -288,7 +290,11 @@ mod tests {
         assert!(t.contains("CREATE TRIGGER trg_norm BEFORE INSERT ON documents"));
 
         let drop = gen
-            .emit(&Operation::DropTrigger { schema: None, table: "documents".into(), name: "trg_norm".into() })
+            .emit(&Operation::DropTrigger {
+                schema: None,
+                table: "documents".into(),
+                name: "trg_norm".into(),
+            })
             .unwrap()
             .join("\n");
         assert!(drop.contains("DROP TRIGGER IF EXISTS \"trg_norm\" ON \"documents\";"));
@@ -298,13 +304,17 @@ mod tests {
     fn postgres_ensure_extension() {
         let gen = PostgresGenerator::new();
         let sql = gen
-            .emit(&Operation::EnsureExtension { name: "vector".into() })
+            .emit(&Operation::EnsureExtension {
+                name: "vector".into(),
+            })
             .unwrap()
             .join("\n");
         assert_eq!(sql, "CREATE EXTENSION IF NOT EXISTS \"vector\";");
         // SQLite la omite con aviso (sin SQL).
         assert!(SqliteGenerator::new()
-            .emit(&Operation::EnsureExtension { name: "vector".into() })
+            .emit(&Operation::EnsureExtension {
+                name: "vector".into()
+            })
             .unwrap()
             .is_empty());
     }
@@ -315,7 +325,11 @@ mod tests {
         let gen = SqliteGenerator::new();
         let out = gen
             .emit(&Operation::CreateFunction {
-                function: DbFunction { name: "f".into(), schema: None, definition: "...".into() },
+                function: DbFunction {
+                    name: "f".into(),
+                    schema: None,
+                    definition: "...".into(),
+                },
             })
             .unwrap();
         assert!(out.is_empty(), "SQLite omite funciones con aviso");
@@ -326,14 +340,20 @@ mod tests {
         use efrust_core::model::PrimaryKey;
         let mut t = customer();
         t.name = "Order".into();
-        t.primary_key = Some(PrimaryKey { name: "PK_Order".into(), columns: vec!["Id".into()] });
+        t.primary_key = Some(PrimaryKey {
+            name: "PK_Order".into(),
+            columns: vec!["Id".into()],
+        });
         let op = Operation::RebuildTable {
             table: t,
             copy_columns: vec!["Id".into(), "Name".into()],
         };
         let sql = SqliteGenerator::new().emit(&op).unwrap();
         let joined = sql.join("\n");
-        assert!(joined.contains("CREATE TABLE \"Order_efrust_new\""), "got: {joined}");
+        assert!(
+            joined.contains("CREATE TABLE \"Order_efrust_new\""),
+            "got: {joined}"
+        );
         assert!(joined.contains("INSERT INTO \"Order_efrust_new\" (\"Id\", \"Name\") SELECT \"Id\", \"Name\" FROM \"Order\";"));
         assert!(joined.contains("DROP TABLE \"Order\";"));
         assert!(joined.contains("ALTER TABLE \"Order_efrust_new\" RENAME TO \"Order\";"));
@@ -362,10 +382,17 @@ mod tests {
             comment: None,
         };
         let sql = SqlServerGenerator::new()
-            .emit(&Operation::AddColumn { schema: None, table: "People".into(), column: col })
+            .emit(&Operation::AddColumn {
+                schema: None,
+                table: "People".into(),
+                column: col,
+            })
             .unwrap()
             .join("\n");
-        assert!(sql.contains("[FullName] AS ([First]+' '+[Last]) PERSISTED NOT NULL"), "got: {sql}");
+        assert!(
+            sql.contains("[FullName] AS ([First]+' '+[Last]) PERSISTED NOT NULL"),
+            "got: {sql}"
+        );
     }
 
     #[test]
@@ -377,7 +404,11 @@ mod tests {
         row.insert("Active".to_string(), json!(true));
 
         let ins = PostgresGenerator::new()
-            .emit(&Operation::InsertData { schema: None, table: "Cat".into(), row: row.clone() })
+            .emit(&Operation::InsertData {
+                schema: None,
+                table: "Cat".into(),
+                row: row.clone(),
+            })
             .unwrap()
             .join("\n");
         // Orden de columnas alfabético (BTreeMap), bool de Postgres = TRUE, escape de comillas.
@@ -387,15 +418,26 @@ mod tests {
         );
         // En MySQL el bool es 1/0.
         let ins_my = MySqlGenerator::new()
-            .emit(&Operation::InsertData { schema: None, table: "Cat".into(), row })
+            .emit(&Operation::InsertData {
+                schema: None,
+                table: "Cat".into(),
+                row,
+            })
             .unwrap()
             .join("\n");
-        assert!(ins_my.contains("VALUES (1, 1, 'O''Brien');"), "got: {ins_my}");
+        assert!(
+            ins_my.contains("VALUES (1, 1, 'O''Brien');"),
+            "got: {ins_my}"
+        );
 
         let mut key = std::collections::BTreeMap::new();
         key.insert("Id".to_string(), json!(1));
         let del = SqliteGenerator::new()
-            .emit(&Operation::DeleteData { schema: None, table: "Cat".into(), key: key.clone() })
+            .emit(&Operation::DeleteData {
+                schema: None,
+                table: "Cat".into(),
+                key: key.clone(),
+            })
             .unwrap()
             .join("\n");
         assert_eq!(del, "DELETE FROM \"Cat\" WHERE \"Id\" = 1;");
@@ -403,7 +445,12 @@ mod tests {
         let mut vals = std::collections::BTreeMap::new();
         vals.insert("Name".to_string(), json!("New"));
         let upd = SqliteGenerator::new()
-            .emit(&Operation::UpdateData { schema: None, table: "Cat".into(), key, values: vals })
+            .emit(&Operation::UpdateData {
+                schema: None,
+                table: "Cat".into(),
+                key,
+                values: vals,
+            })
             .unwrap()
             .join("\n");
         assert_eq!(upd, "UPDATE \"Cat\" SET \"Name\" = 'New' WHERE \"Id\" = 1;");
@@ -411,7 +458,9 @@ mod tests {
 
     #[test]
     fn raw_sql_verbatim_en_todos_los_motores() {
-        let op = Operation::RawSql { sql: "CREATE FULLTEXT CATALOG [ft];".into() };
+        let op = Operation::RawSql {
+            sql: "CREATE FULLTEXT CATALOG [ft];".into(),
+        };
         for sql in [
             PostgresGenerator::new().emit(&op).unwrap().join(""),
             MySqlGenerator::new().emit(&op).unwrap().join(""),
@@ -425,7 +474,10 @@ mod tests {
     #[test]
     fn mysql_create_table_fk_indice() {
         let gen = MySqlGenerator::new();
-        let create = gen.emit(&Operation::CreateTable { table: customer() }).unwrap().join("\n");
+        let create = gen
+            .emit(&Operation::CreateTable { table: customer() })
+            .unwrap()
+            .join("\n");
         assert!(create.contains("CREATE TABLE `Customer`"));
         assert!(create.contains("`Id` int NOT NULL AUTO_INCREMENT"));
         assert!(create.contains("`Name` varchar(200) NOT NULL"));
@@ -459,7 +511,10 @@ mod tests {
             },
         };
         let sql = gen.emit(&op).unwrap().join("\n");
-        assert!(sql.contains("CREATE FULLTEXT INDEX `ft_body` ON `documents` (`body`);"), "got: {sql}");
+        assert!(
+            sql.contains("CREATE FULLTEXT INDEX `ft_body` ON `documents` (`body`);"),
+            "got: {sql}"
+        );
 
         // Columna generada STORED.
         let col = Column {
@@ -478,10 +533,17 @@ mod tests {
             comment: None,
         };
         let add = gen
-            .emit(&Operation::AddColumn { schema: None, table: "documents".into(), column: col })
+            .emit(&Operation::AddColumn {
+                schema: None,
+                table: "documents".into(),
+                column: col,
+            })
             .unwrap()
             .join("\n");
-        assert!(add.contains("GENERATED ALWAYS AS (lower(`title`)) STORED"), "got: {add}");
+        assert!(
+            add.contains("GENERATED ALWAYS AS (lower(`title`)) STORED"),
+            "got: {add}"
+        );
     }
 
     #[test]
@@ -489,10 +551,15 @@ mod tests {
         let gen = SqliteGenerator::new();
         // El índice se genera.
         let ix = gen.emit(&index_op()).unwrap().join("\n");
-        assert!(ix.contains("CREATE UNIQUE INDEX \"IX_Order_CustomerId\" ON \"Order\" (\"CustomerId\");"));
+        assert!(ix.contains(
+            "CREATE UNIQUE INDEX \"IX_Order_CustomerId\" ON \"Order\" (\"CustomerId\");"
+        ));
         // La FK por ALTER se omite (sin sentencias): SQLite la declara inline.
         let fk = gen.emit(&fk_op()).unwrap();
-        assert!(fk.is_empty(), "SQLite omite AddForeignKey (va inline en CREATE TABLE)");
+        assert!(
+            fk.is_empty(),
+            "SQLite omite AddForeignKey (va inline en CREATE TABLE)"
+        );
     }
 
     #[test]
@@ -521,7 +588,10 @@ mod tests {
     #[test]
     fn sqlserver_genera_tsql() {
         let gen = SqlServerGenerator::new();
-        let create = gen.emit(&Operation::CreateTable { table: customer() }).unwrap().join("\n");
+        let create = gen
+            .emit(&Operation::CreateTable { table: customer() })
+            .unwrap()
+            .join("\n");
         assert!(create.contains("CREATE TABLE [Customer]"));
         assert!(create.contains("[Id] int NOT NULL IDENTITY(1,1)"));
         assert!(create.contains("[Name] nvarchar(200) NOT NULL"));

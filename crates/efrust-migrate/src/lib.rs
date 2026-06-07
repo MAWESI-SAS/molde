@@ -93,7 +93,11 @@ impl Backend {
             }
             Backend::Mssql(client) => {
                 let mut c = client.lock().await;
-                let rows = c.simple_query(sql.to_string()).await?.into_first_result().await?;
+                let rows = c
+                    .simple_query(sql.to_string())
+                    .await?
+                    .into_first_result()
+                    .await?;
                 Ok(rows
                     .iter()
                     .map(|r| r.get::<&str, _>(0).unwrap_or("").to_string())
@@ -105,7 +109,11 @@ impl Backend {
 
 /// Ejecuta una sentencia en SQL Server y consume su resultado.
 async fn mssql_run(client: &mut MssqlClient, sql: &str) -> Result<(), MigrateError> {
-    client.simple_query(sql.to_string()).await?.into_results().await?;
+    client
+        .simple_query(sql.to_string())
+        .await?
+        .into_results()
+        .await?;
     Ok(())
 }
 
@@ -143,7 +151,10 @@ impl Migrator {
             Backend::Mssql(Mutex::new(client))
         } else {
             install_default_drivers();
-            let pool = AnyPoolOptions::new().max_connections(5).connect(url).await?;
+            let pool = AnyPoolOptions::new()
+                .max_connections(5)
+                .connect(url)
+                .await?;
             Backend::Sqlx(pool)
         };
         Ok(Self {
@@ -278,8 +289,14 @@ mod tests {
             schema: None,
             clr_type: Some("App.Models.Customer".into()),
             comment: None,
-            columns: vec![col("Id", "System.Int32", true), col("Name", "System.String", false)],
-            primary_key: Some(PrimaryKey { name: "PK_Customer".into(), columns: vec!["Id".into()] }),
+            columns: vec![
+                col("Id", "System.Int32", true),
+                col("Name", "System.String", false),
+            ],
+            primary_key: Some(PrimaryKey {
+                name: "PK_Customer".into(),
+                columns: vec!["Id".into()],
+            }),
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
@@ -289,7 +306,10 @@ mod tests {
             "20260607120000_InitialCreate",
             "InitialCreate",
             vec![Operation::CreateTable { table }],
-            vec![Operation::DropTable { schema: None, name: "Customer".into() }],
+            vec![Operation::DropTable {
+                schema: None,
+                name: "Customer".into(),
+            }],
         )
     }
 
@@ -299,7 +319,9 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let url = format!("sqlite://{}?mode=rwc", path.display());
 
-        let migrator = Migrator::connect(&url, Provider::Sqlite).await.expect("conexión sqlite");
+        let migrator = Migrator::connect(&url, Provider::Sqlite)
+            .await
+            .expect("conexión sqlite");
         let migs = vec![initial_create()];
 
         let r = migrator.update(&migs, None).await.unwrap();

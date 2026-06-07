@@ -21,7 +21,9 @@ async fn connect(ado: &str) -> Client<tokio_util::compat::Compat<TcpStream>> {
     let config = tiberius::Config::from_ado_string(ado).expect("ADO string");
     let tcp = TcpStream::connect(config.get_addr()).await.expect("tcp");
     tcp.set_nodelay(true).ok();
-    Client::connect(config, tcp.compat_write()).await.expect("tds connect")
+    Client::connect(config, tcp.compat_write())
+        .await
+        .expect("tds connect")
 }
 
 #[tokio::test]
@@ -37,7 +39,9 @@ async fn round_trip_sqlserver_computed_persisted() {
 
     let st = &src_model.tables[0];
     assert!(
-        st.columns.iter().any(|c| c.computed_sql.is_some() && c.computed_stored),
+        st.columns
+            .iter()
+            .any(|c| c.computed_sql.is_some() && c.computed_stored),
         "el origen debe tener una columna computada PERSISTED"
     );
 
@@ -59,8 +63,19 @@ async fn round_trip_sqlserver_computed_persisted() {
     dst_model.normalize();
 
     let dt = &dst_model.tables[0];
-    let sc = st.columns.iter().find(|c| c.computed_sql.is_some()).unwrap();
-    let dc = dt.columns.iter().find(|c| c.computed_sql.is_some()).expect("computada en destino");
+    let sc = st
+        .columns
+        .iter()
+        .find(|c| c.computed_sql.is_some())
+        .unwrap();
+    let dc = dt
+        .columns
+        .iter()
+        .find(|c| c.computed_sql.is_some())
+        .expect("computada en destino");
     assert_eq!(sc.name, dc.name);
-    assert_eq!(sc.computed_stored, dc.computed_stored, "PERSISTED preservado");
+    assert_eq!(
+        sc.computed_stored, dc.computed_stored,
+        "PERSISTED preservado"
+    );
 }

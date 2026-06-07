@@ -79,7 +79,9 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
 
     match outcome {
         AddOutcome::NoChanges => {
-            println!("No hay cambios en el modelo respecto al snapshot. No se creó ninguna migración.");
+            println!(
+                "No hay cambios en el modelo respecto al snapshot. No se creó ninguna migración."
+            );
         }
         AddOutcome::Created {
             id,
@@ -89,7 +91,10 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
             snapshot_path,
         } => {
             println!("Migración creada: {id}");
-            println!("  ✔ {}  ({up_ops} op. up, {down_ops} op. down)", migration_path.display());
+            println!(
+                "  ✔ {}  ({up_ops} op. up, {down_ops} op. down)",
+                migration_path.display()
+            );
             println!("  ✔ snapshot actualizado: {}", snapshot_path.display());
         }
     }

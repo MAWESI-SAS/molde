@@ -30,7 +30,11 @@ impl MySqlGenerator {
         let mut parts = vec![self.quote_ident(&column.name), self.store_type_for(column)?];
         // Columna generada (STORED/VIRTUAL). Excluye AUTO_INCREMENT y DEFAULT.
         if let Some(expr) = &column.computed_sql {
-            let kind = if column.computed_stored { "STORED" } else { "VIRTUAL" };
+            let kind = if column.computed_stored {
+                "STORED"
+            } else {
+                "VIRTUAL"
+            };
             parts.push(format!("GENERATED ALWAYS AS ({expr}) {kind}"));
             if !column.is_nullable {
                 parts.push("NOT NULL".into());
@@ -68,7 +72,11 @@ impl MySqlGenerator {
 
     fn add_foreign_key(&self, table: &str, fk: &ForeignKey) -> String {
         let cols: Vec<String> = fk.columns.iter().map(|c| self.quote_ident(c)).collect();
-        let pcols: Vec<String> = fk.principal_columns.iter().map(|c| self.quote_ident(c)).collect();
+        let pcols: Vec<String> = fk
+            .principal_columns
+            .iter()
+            .map(|c| self.quote_ident(c))
+            .collect();
         format!(
             "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}){};",
             self.quote_ident(table),
@@ -170,7 +178,9 @@ impl SqlGenerator for MySqlGenerator {
                 self.quote_ident(table),
                 self.column_def(new)?
             )],
-            Operation::AddForeignKey { table, foreign_key, .. } => {
+            Operation::AddForeignKey {
+                table, foreign_key, ..
+            } => {
                 vec![self.add_foreign_key(table, foreign_key)]
             }
             Operation::DropForeignKey { table, name, .. } => vec![format!(
@@ -192,9 +202,12 @@ impl SqlGenerator for MySqlGenerator {
             Operation::DeleteData { schema, table, key } => {
                 self.emit_delete_data(schema.as_deref(), table, key)
             }
-            Operation::UpdateData { schema, table, key, values } => {
-                self.emit_update_data(schema.as_deref(), table, key, values)
-            }
+            Operation::UpdateData {
+                schema,
+                table,
+                key,
+                values,
+            } => self.emit_update_data(schema.as_deref(), table, key, values),
             Operation::EnsureExtension { .. }
             | Operation::CreateFunction { .. }
             | Operation::DropFunction { .. }

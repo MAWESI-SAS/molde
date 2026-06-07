@@ -53,7 +53,10 @@ fn base_command(opts: &SidecarOptions<'_>) -> (Command, String) {
     // Modo por defecto: `dotnet <dll>`.
     let mut cmd = Command::new(opts.dotnet);
     cmd.arg(opts.sidecar_dll);
-    (cmd, format!("{} {}", opts.dotnet, opts.sidecar_dll.display()))
+    (
+        cmd,
+        format!("{} {}", opts.dotnet, opts.sidecar_dll.display()),
+    )
 }
 
 /// Ejecuta el sidecar y devuelve el modelo del DbContext del usuario.

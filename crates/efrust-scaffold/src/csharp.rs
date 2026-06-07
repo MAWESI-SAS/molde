@@ -100,11 +100,7 @@ pub fn singularize(word: &str) -> String {
     }
     // `customers` → `customer` (pero no tocar palabras tipo `address` (`ss`) o
     // `status` (`us`), ni dejar el nombre vacío).
-    if lower.ends_with('s')
-        && !lower.ends_with("ss")
-        && !lower.ends_with("us")
-        && word.len() > 1
-    {
+    if lower.ends_with('s') && !lower.ends_with("ss") && !lower.ends_with("us") && word.len() > 1 {
         return word[..word.len() - 1].to_string();
     }
     word.to_string()

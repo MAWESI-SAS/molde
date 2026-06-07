@@ -82,8 +82,7 @@ fn resolve_provider(explicit: Option<&str>, url: &str) -> anyhow::Result<Provide
     match explicit {
         Some(p) => Provider::parse(p)
             .with_context(|| format!("provider no soportado: '{p}' (usa sqlite | postgres)")),
-        None => Provider::from_url(url).context(
-            "no se pudo inferir el provider desde la URL; especifícalo con --provider",
-        ),
+        None => Provider::from_url(url)
+            .context("no se pudo inferir el provider desde la URL; especifícalo con --provider"),
     }
 }

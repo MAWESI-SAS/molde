@@ -65,8 +65,7 @@ impl DatabaseModel {
     /// los diffs y snapshots sean estables (no produzcan ruido por reordenamientos).
     pub fn normalize(&mut self) {
         self.tables.sort_by(|a, b| {
-            (a.schema.as_deref(), a.name.as_str())
-                .cmp(&(b.schema.as_deref(), b.name.as_str()))
+            (a.schema.as_deref(), a.name.as_str()).cmp(&(b.schema.as_deref(), b.name.as_str()))
         });
         for t in &mut self.tables {
             t.columns.sort_by(|a, b| a.name.cmp(&b.name));

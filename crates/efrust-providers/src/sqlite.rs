@@ -63,8 +63,7 @@ impl SqliteGenerator {
         // PK compuesta → constraint a nivel de tabla.
         if let Some(pk) = &table.primary_key {
             if pk.columns.len() > 1 {
-                let cols: Vec<String> =
-                    pk.columns.iter().map(|c| self.quote_ident(c)).collect();
+                let cols: Vec<String> = pk.columns.iter().map(|c| self.quote_ident(c)).collect();
                 lines.push(format!("    PRIMARY KEY ({})", cols.join(", ")));
             }
         }
@@ -73,8 +72,11 @@ impl SqliteGenerator {
         // dentro de CREATE TABLE (incluso con referencias a tablas aún no creadas).
         for fk in &table.foreign_keys {
             let cols: Vec<String> = fk.columns.iter().map(|c| self.quote_ident(c)).collect();
-            let pcols: Vec<String> =
-                fk.principal_columns.iter().map(|c| self.quote_ident(c)).collect();
+            let pcols: Vec<String> = fk
+                .principal_columns
+                .iter()
+                .map(|c| self.quote_ident(c))
+                .collect();
             lines.push(format!(
                 "    CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}){}",
                 self.quote_ident(&fk.name),
@@ -114,9 +116,7 @@ impl SqlGenerator for SqliteGenerator {
             "System.Int16" | "System.Int32" | "System.Int64" | "System.Boolean" => "INTEGER",
             "System.Single" | "System.Double" => "REAL",
             "System.Decimal" => "TEXT", // EF guarda decimal como TEXT en SQLite
-            "System.DateTime" | "System.DateTimeOffset" | "System.Guid" | "System.String" => {
-                "TEXT"
-            }
+            "System.DateTime" | "System.DateTimeOffset" | "System.Guid" | "System.String" => "TEXT",
             "System.Byte[]" => "BLOB",
             _ => {
                 return Err(ProviderError::UnmappedType {
@@ -161,7 +161,9 @@ impl SqlGenerator for SqliteGenerator {
             // SQLite no permite añadir/quitar FKs con ALTER TABLE (requiere
             // reconstruir la tabla). Se omiten con aviso: las tablas e índices
             // se crean igual; la integridad referencial no se aplica.
-            Operation::AddForeignKey { table, foreign_key, .. } => {
+            Operation::AddForeignKey {
+                table, foreign_key, ..
+            } => {
                 tracing::warn!(
                     "SQLite no soporta ALTER ADD FOREIGN KEY; se omite '{}' en '{}'",
                     foreign_key.name,
@@ -177,9 +179,10 @@ impl SqlGenerator for SqliteGenerator {
                 );
                 Vec::new()
             }
-            Operation::RebuildTable { table, copy_columns } => {
-                self.rebuild_table(table, copy_columns)?
-            }
+            Operation::RebuildTable {
+                table,
+                copy_columns,
+            } => self.rebuild_table(table, copy_columns)?,
             Operation::RawSql { sql } => vec![sql.clone()],
             Operation::InsertData { schema, table, row } => {
                 self.emit_insert_data(schema.as_deref(), table, row)
@@ -187,9 +190,12 @@ impl SqlGenerator for SqliteGenerator {
             Operation::DeleteData { schema, table, key } => {
                 self.emit_delete_data(schema.as_deref(), table, key)
             }
-            Operation::UpdateData { schema, table, key, values } => {
-                self.emit_update_data(schema.as_deref(), table, key, values)
-            }
+            Operation::UpdateData {
+                schema,
+                table,
+                key,
+                values,
+            } => self.emit_update_data(schema.as_deref(), table, key, values),
             Operation::EnsureExtension { .. }
             | Operation::CreateFunction { .. }
             | Operation::DropFunction { .. }

@@ -142,10 +142,25 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("efrust_author_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let snap = dir.join("model-snapshot.json");
-        let model = model_with(vec![col("Id", "System.Int32"), col("Name", "System.String")]);
+        let model = model_with(vec![
+            col("Id", "System.Int32"),
+            col("Name", "System.String"),
+        ]);
 
-        let outcome = add("InitialCreate", "20260607120000_InitialCreate", &model, &dir, &snap).unwrap();
-        let AddOutcome::Created { up_ops, migration_path, .. } = outcome else {
+        let outcome = add(
+            "InitialCreate",
+            "20260607120000_InitialCreate",
+            &model,
+            &dir,
+            &snap,
+        )
+        .unwrap();
+        let AddOutcome::Created {
+            up_ops,
+            migration_path,
+            ..
+        } = outcome
+        else {
             panic!("se esperaba Created");
         };
         assert_eq!(up_ops, 1); // un CreateTable
@@ -185,7 +200,10 @@ mod tests {
 
         let v1 = model_with(vec![col("Id", "System.Int32")]);
         add("Init", "20260607120000_Init", &v1, &dir, &snap).unwrap();
-        let v2 = model_with(vec![col("Id", "System.Int32"), col("Email", "System.String")]);
+        let v2 = model_with(vec![
+            col("Id", "System.Int32"),
+            col("Email", "System.String"),
+        ]);
         add("AddEmail", "20260607120100_AddEmail", &v2, &dir, &snap).unwrap();
 
         // Quitar la última debe dejar el snapshot como v1 (solo columna Id).
@@ -212,13 +230,19 @@ mod tests {
         let v1 = model_with(vec![col("Id", "System.Int32")]);
         add("Init", "20260607120000_Init", &v1, &dir, &snap).unwrap();
 
-        let v2 = model_with(vec![col("Id", "System.Int32"), col("Email", "System.String")]);
+        let v2 = model_with(vec![
+            col("Id", "System.Int32"),
+            col("Email", "System.String"),
+        ]);
         let outcome = add("AddEmail", "20260607120100_AddEmail", &v2, &dir, &snap).unwrap();
         let AddOutcome::Created { up_ops, .. } = outcome else {
             panic!("se esperaba Created");
         };
         assert_eq!(up_ops, 1); // un AddColumn
-        let migration = efrust_core::migration::load_dir(&dir).unwrap().pop().unwrap();
+        let migration = efrust_core::migration::load_dir(&dir)
+            .unwrap()
+            .pop()
+            .unwrap();
         assert!(matches!(migration.up[0], Operation::AddColumn { .. }));
 
         let _ = std::fs::remove_dir_all(&dir);
