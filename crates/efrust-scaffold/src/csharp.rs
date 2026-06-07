@@ -75,6 +75,41 @@ fn is_vowel(c: char) -> bool {
     matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')
 }
 
+/// Singularización aproximada estilo EF para nombres de clase de entidad
+/// (inversa de [`pluralize`]). `Customers` → `Customer`, `Categories` →
+/// `Category`, `Addresses` → `Address`. Conserva palabras que no terminan en
+/// `s` y evita vaciar el identificador.
+pub fn singularize(word: &str) -> String {
+    let lower = word.to_ascii_lowercase();
+    // `categories` → `category` (consonante + ies).
+    if let Some(stem) = lower.strip_suffix("ies") {
+        if stem.chars().last().map(|c| !is_vowel(c)).unwrap_or(false) {
+            return format!("{}y", &word[..word.len() - 3]);
+        }
+    }
+    // `addresses`/`boxes`/`buses` → quitar `es` tras s/x/z/ch/sh.
+    if let Some(stem) = lower.strip_suffix("es") {
+        if stem.ends_with('s')
+            || stem.ends_with('x')
+            || stem.ends_with('z')
+            || stem.ends_with("ch")
+            || stem.ends_with("sh")
+        {
+            return word[..word.len() - 2].to_string();
+        }
+    }
+    // `customers` → `customer` (pero no tocar palabras tipo `address` (`ss`) o
+    // `status` (`us`), ni dejar el nombre vacío).
+    if lower.ends_with('s')
+        && !lower.ends_with("ss")
+        && !lower.ends_with("us")
+        && word.len() > 1
+    {
+        return word[..word.len() - 1].to_string();
+    }
+    word.to_string()
+}
+
 /// Convierte un identificador de BD a PascalCase para C#.
 /// `created_at` → `CreatedAt`, `customer` → `Customer`, `Customer` → `Customer`.
 /// Divide por `_`, espacio y `-`, capitaliza cada segmento y conserva el resto.
@@ -105,6 +140,22 @@ mod tests {
         assert_eq!(pluralize("Box"), "Boxes");
         assert_eq!(pluralize("Day"), "Days"); // vocal antes de 'y'
         assert_eq!(pluralize("Address"), "Addresses");
+    }
+
+    #[test]
+    fn singulariza_casos_comunes() {
+        assert_eq!(singularize("Customers"), "Customer");
+        assert_eq!(singularize("Categories"), "Category");
+        assert_eq!(singularize("Boxes"), "Box");
+        assert_eq!(singularize("Addresses"), "Address");
+        assert_eq!(singularize("Documents"), "Document");
+        // No debe vaciar ni romper casos sin plural claro.
+        assert_eq!(singularize("Status"), "Status"); // termina en 'us' → intacto
+        assert_eq!(singularize("Address"), "Address"); // termina en 'ss' → intacto
+        assert_eq!(singularize("Order"), "Order");
+        // Idempotencia con pluralize en casos regulares.
+        assert_eq!(singularize(&pluralize("Order")), "Order");
+        assert_eq!(singularize(&pluralize("Category")), "Category");
     }
 
     #[test]

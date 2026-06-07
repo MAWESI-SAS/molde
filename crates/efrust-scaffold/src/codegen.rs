@@ -65,9 +65,10 @@ pub fn generate(model: &DatabaseModel, opts: &CodegenOptions) -> Vec<GeneratedFi
     files
 }
 
-/// Nombre de la clase C# para una tabla (PascalCase del nombre de BD).
+/// Nombre de la clase C# para una tabla: PascalCase + singularización estilo EF
+/// (`documents` → `Document`). El `DbSet` se vuelve a pluralizar a partir de este.
 fn class_name(table: &Table) -> String {
-    pascalize(&table.name)
+    csharp::singularize(&pascalize(&table.name))
 }
 
 /// Nombre de la propiedad C# para una columna de BD.
@@ -587,7 +588,7 @@ mod tests {
     #[test]
     fn mapea_tipos_vector_y_tsvector() {
         let files = generate(&search_model(), &CodegenOptions::default());
-        let doc = &files.iter().find(|f| f.relative_path == "Documents.cs").unwrap().contents;
+        let doc = &files.iter().find(|f| f.relative_path == "Document.cs").unwrap().contents;
         assert!(doc.contains("public Pgvector.Vector Embedding { get; set; } = null!;"), "got: {doc}");
         assert!(doc.contains("public NpgsqlTypes.NpgsqlTsVector Search { get; set; } = null!;"), "got: {doc}");
     }
@@ -610,6 +611,27 @@ mod tests {
         ), "got: {ctx}");
         // El índice por expresión NO va al Fluent API.
         assert!(!ctx.contains("ix_documents_fts"));
+    }
+
+    #[test]
+    fn singulariza_clase_y_pluraliza_dbset() {
+        let mut m = DatabaseModel::empty();
+        m.tables.push(Table {
+            name: "documents".into(),
+            schema: None,
+            clr_type: None,
+            comment: None,
+            columns: vec![col("id", "System.Int32", false, None)],
+            primary_key: Some(PrimaryKey { name: "pk".into(), columns: vec!["id".into()] }),
+            foreign_keys: vec![],
+            indexes: vec![],
+            triggers: vec![],
+        });
+        let files = generate(&m, &CodegenOptions::default());
+        assert!(files.iter().any(|f| f.relative_path == "Document.cs"), "clase singular");
+        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
+        assert!(ctx.contains("public virtual DbSet<Document> Documents"), "DbSet plural; got: {ctx}");
+        assert!(ctx.contains("entity.ToTable(\"documents\");"), "ToTable conserva el nombre de BD");
     }
 
     #[test]
