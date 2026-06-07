@@ -287,7 +287,35 @@ fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel, pro
         let _ = writeln!(s, "                .HasConstraintName(\"{}\");", fk.name);
     }
 
+    // Datos sembrados (HasData).
+    if !table.seed_data.is_empty() {
+        let cls = class_name(table);
+        let _ = writeln!(s, "            entity.HasData(");
+        for (i, row) in table.seed_data.iter().enumerate() {
+            let inits = row
+                .iter()
+                .map(|(col, v)| format!("{} = {}", prop_name(col), cs_value(v)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let sep = if i + 1 < table.seed_data.len() { "," } else { "" };
+            let _ = writeln!(s, "                new {cls} {{ {inits} }}{sep}");
+        }
+        let _ = writeln!(s, "            );");
+    }
+
     let _ = writeln!(s, "        }});");
+}
+
+/// Literal C# para un valor JSON sembrado.
+fn cs_value(v: &serde_json::Value) -> String {
+    use serde_json::Value;
+    match v {
+        Value::Null => "null".to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => format!("\"{}\"", escape_cs(s)),
+        other => format!("\"{}\"", escape_cs(&other.to_string())),
+    }
 }
 
 /// Selector de columnas `e => e.X` o `e => new {{ e.A, e.B }}` (PascalCase).
@@ -486,6 +514,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            seed_data: vec![],
         });
         m.tables.push(Table {
             name: "Order".into(),
@@ -504,6 +533,7 @@ mod tests {
             }],
             indexes: vec![Index { name: "IX_Order_CustomerId".into(), columns: vec!["CustomerId".into()], is_unique: false, filter: None, method: None, operators: vec![], expression: None }],
             triggers: vec![],
+            seed_data: vec![],
         });
         m
     }
@@ -537,6 +567,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            seed_data: vec![],
         });
         let files = generate(&m, &CodegenOptions::default());
 
@@ -609,6 +640,7 @@ mod tests {
                 function: Some("public.normalize_body".into()),
                 definition: "CREATE TRIGGER trg_normalize BEFORE INSERT ON public.documents FOR EACH ROW EXECUTE FUNCTION normalize_body()".into(),
             }],
+            seed_data: vec![],
         });
         m.functions.push(DbFunction {
             name: "normalize_body".into(),
@@ -647,6 +679,40 @@ mod tests {
     }
 
     #[test]
+    fn seed_data_emite_has_data() {
+        use serde_json::json;
+        let mut m = DatabaseModel::empty();
+        let mut t = Table {
+            name: "categories".into(),
+            schema: None,
+            clr_type: None,
+            comment: None,
+            columns: vec![
+                col("id", "System.Int32", false, None),
+                col("name", "System.String", false, Some(50)),
+            ],
+            primary_key: Some(PrimaryKey { name: "pk".into(), columns: vec!["id".into()] }),
+            foreign_keys: vec![],
+            indexes: vec![],
+            triggers: vec![],
+            seed_data: vec![],
+        };
+        let mut r = std::collections::BTreeMap::new();
+        r.insert("id".to_string(), json!(1));
+        r.insert("name".to_string(), json!("Beverages"));
+        t.seed_data.push(r);
+        m.tables.push(t);
+
+        let ctx = &generate(&m, &CodegenOptions::default())
+            .into_iter()
+            .find(|f| f.relative_path == "AppDbContext.cs")
+            .unwrap()
+            .contents;
+        assert!(ctx.contains("entity.HasData("), "got: {ctx}");
+        assert!(ctx.contains("new Category { Id = 1, Name = \"Beverages\" }"), "got: {ctx}");
+    }
+
+    #[test]
     fn singulariza_clase_y_pluraliza_dbset() {
         let mut m = DatabaseModel::empty();
         m.tables.push(Table {
@@ -659,6 +725,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            seed_data: vec![],
         });
         let files = generate(&m, &CodegenOptions::default());
         assert!(files.iter().any(|f| f.relative_path == "Document.cs"), "clase singular");
@@ -692,6 +759,7 @@ mod tests {
                 expression: None,
             }],
             triggers: vec![],
+            seed_data: vec![],
         });
         let opts = CodegenOptions { provider: efrust_providers::Provider::MySql, ..Default::default() };
         let files = generate(&m, &opts);

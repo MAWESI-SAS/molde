@@ -98,6 +98,7 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
         foreign_keys: Vec::new(),
         indexes: Vec::new(),
         triggers: Vec::new(),
+        seed_data: Vec::new(),
     };
 
     // Columnas (PRAGMA table_info: cid, name, type, notnull, dflt_value, pk).
@@ -287,6 +288,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
                 foreign_keys: Vec::new(),
                 indexes: Vec::new(),
                 triggers: Vec::new(),
+                seed_data: Vec::new(),
             },
         );
     }
@@ -785,6 +787,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
                 foreign_keys: Vec::new(),
                 indexes: Vec::new(),
                 triggers: Vec::new(),
+                seed_data: Vec::new(),
             },
         );
     }
@@ -1013,6 +1016,7 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
                 foreign_keys: Vec::new(),
                 indexes: Vec::new(),
                 triggers: Vec::new(),
+                seed_data: Vec::new(),
             },
         );
     }

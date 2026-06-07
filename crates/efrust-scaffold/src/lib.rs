@@ -82,6 +82,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            seed_data: vec![],
         };
 
         install_default_drivers();
@@ -158,6 +159,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            seed_data: vec![],
         };
         let mut old = DatabaseModel::empty();
         old.tables.push(person("System.String")); // Age TEXT

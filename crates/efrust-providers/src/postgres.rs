@@ -92,6 +92,14 @@ impl SqlGenerator for PostgresGenerator {
         "postgres"
     }
 
+    fn bool_literal(&self, b: bool) -> &'static str {
+        if b {
+            "TRUE"
+        } else {
+            "FALSE"
+        }
+    }
+
     fn store_type_for(&self, column: &Column) -> Result<String, ProviderError> {
         if let Some(st) = &column.store_type {
             return Ok(st.clone());
@@ -188,6 +196,15 @@ impl SqlGenerator for PostgresGenerator {
             Operation::RawSql { sql } => vec![sql.clone()],
             // Postgres usa ALTER granular; la reconstrucción es solo para SQLite.
             Operation::RebuildTable { .. } => Vec::new(),
+            Operation::InsertData { schema, table, row } => {
+                self.emit_insert_data(schema.as_deref(), table, row)
+            }
+            Operation::DeleteData { schema, table, key } => {
+                self.emit_delete_data(schema.as_deref(), table, key)
+            }
+            Operation::UpdateData { schema, table, key, values } => {
+                self.emit_update_data(schema.as_deref(), table, key, values)
+            }
         };
         Ok(sql)
     }

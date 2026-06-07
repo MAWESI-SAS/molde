@@ -4,8 +4,11 @@
 //! [`Operation`]s agnósticas; el provider las traduce al dialecto SQL concreto,
 //! incluyendo el mapeo de tipo CLR → tipo de almacenamiento.
 
+use std::collections::BTreeMap;
+
 use efrust_core::diff::Operation;
 use efrust_core::model::Column;
+use serde_json::Value;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
@@ -64,6 +67,98 @@ pub trait SqlGenerator {
             self.name()
         );
         Vec::new()
+    }
+
+    /// Literal SQL para `true`/`false`. Por defecto `1`/`0` (SQLite/MySQL/SQL
+    /// Server); Postgres lo sobreescribe con `TRUE`/`FALSE`.
+    fn bool_literal(&self, b: bool) -> &'static str {
+        if b {
+            "1"
+        } else {
+            "0"
+        }
+    }
+
+    /// Render de un valor JSON como literal SQL (para datos sembrados).
+    fn sql_value(&self, v: &Value) -> String {
+        match v {
+            Value::Null => "NULL".to_string(),
+            Value::Bool(b) => self.bool_literal(*b).to_string(),
+            Value::Number(n) => n.to_string(),
+            Value::String(s) => format!("'{}'", s.replace('\'', "''")),
+            // Arrays/objetos: como texto JSON entre comillas.
+            other => format!("'{}'", other.to_string().replace('\'', "''")),
+        }
+    }
+
+    /// Nombre cualificado `schema.tabla` (o solo `tabla` si no hay esquema).
+    fn qualify(&self, schema: Option<&str>, name: &str) -> String {
+        match schema {
+            Some(s) => format!("{}.{}", self.quote_ident(s), self.quote_ident(name)),
+            None => self.quote_ident(name),
+        }
+    }
+
+    /// `INSERT` de una fila sembrada.
+    fn emit_insert_data(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        row: &BTreeMap<String, Value>,
+    ) -> Vec<String> {
+        let cols = row
+            .keys()
+            .map(|c| self.quote_ident(c))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let vals = row
+            .values()
+            .map(|v| self.sql_value(v))
+            .collect::<Vec<_>>()
+            .join(", ");
+        vec![format!(
+            "INSERT INTO {} ({cols}) VALUES ({vals});",
+            self.qualify(schema, table)
+        )]
+    }
+
+    /// `DELETE` de una fila sembrada por su clave.
+    fn emit_delete_data(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        key: &BTreeMap<String, Value>,
+    ) -> Vec<String> {
+        let pred = self.key_predicate(key);
+        vec![format!("DELETE FROM {} WHERE {pred};", self.qualify(schema, table))]
+    }
+
+    /// `UPDATE` de los valores no-clave de una fila sembrada.
+    fn emit_update_data(
+        &self,
+        schema: Option<&str>,
+        table: &str,
+        key: &BTreeMap<String, Value>,
+        values: &BTreeMap<String, Value>,
+    ) -> Vec<String> {
+        let set = values
+            .iter()
+            .map(|(c, v)| format!("{} = {}", self.quote_ident(c), self.sql_value(v)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let pred = self.key_predicate(key);
+        vec![format!(
+            "UPDATE {} SET {set} WHERE {pred};",
+            self.qualify(schema, table)
+        )]
+    }
+
+    /// Predicado `col = val AND …` a partir de una clave.
+    fn key_predicate(&self, key: &BTreeMap<String, Value>) -> String {
+        key.iter()
+            .map(|(c, v)| format!("{} = {}", self.quote_ident(c), self.sql_value(v)))
+            .collect::<Vec<_>>()
+            .join(" AND ")
     }
 
     /// Traduce una lista de operaciones (atajo conveniente).

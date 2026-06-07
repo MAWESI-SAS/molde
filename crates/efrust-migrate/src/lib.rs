@@ -283,6 +283,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            seed_data: vec![],
         };
         Migration::new(
             "20260607120000_InitialCreate",

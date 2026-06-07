@@ -9,5 +9,6 @@ description = "Generación de SQL por motor (trait SqlGenerator) para efrust"
 
 [dependencies]
 efrust-core = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

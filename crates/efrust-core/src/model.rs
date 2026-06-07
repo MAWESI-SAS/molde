@@ -107,6 +107,10 @@ pub struct Table {
     /// crudo (`Trigger::definition`) para round-trip fiel.
     #[serde(default)]
     pub triggers: Vec<Trigger>,
+    /// Datos sembrados con `HasData` (model-first). Cada fila mapea
+    /// columna → valor JSON. Se materializan como `INSERT`/`UPDATE`/`DELETE`.
+    #[serde(default)]
+    pub seed_data: Vec<std::collections::BTreeMap<String, serde_json::Value>>,
 }
 
 impl Table {

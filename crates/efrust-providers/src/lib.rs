@@ -121,6 +121,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            seed_data: vec![],
         }
     }
 
@@ -365,6 +366,47 @@ mod tests {
             .unwrap()
             .join("\n");
         assert!(sql.contains("[FullName] AS ([First]+' '+[Last]) PERSISTED NOT NULL"), "got: {sql}");
+    }
+
+    #[test]
+    fn datos_sembrados_insert_update_delete() {
+        use serde_json::json;
+        let mut row = std::collections::BTreeMap::new();
+        row.insert("Id".to_string(), json!(1));
+        row.insert("Name".to_string(), json!("O'Brien"));
+        row.insert("Active".to_string(), json!(true));
+
+        let ins = PostgresGenerator::new()
+            .emit(&Operation::InsertData { schema: None, table: "Cat".into(), row: row.clone() })
+            .unwrap()
+            .join("\n");
+        // Orden de columnas alfabético (BTreeMap), bool de Postgres = TRUE, escape de comillas.
+        assert_eq!(
+            ins,
+            "INSERT INTO \"Cat\" (\"Active\", \"Id\", \"Name\") VALUES (TRUE, 1, 'O''Brien');"
+        );
+        // En MySQL el bool es 1/0.
+        let ins_my = MySqlGenerator::new()
+            .emit(&Operation::InsertData { schema: None, table: "Cat".into(), row })
+            .unwrap()
+            .join("\n");
+        assert!(ins_my.contains("VALUES (1, 1, 'O''Brien');"), "got: {ins_my}");
+
+        let mut key = std::collections::BTreeMap::new();
+        key.insert("Id".to_string(), json!(1));
+        let del = SqliteGenerator::new()
+            .emit(&Operation::DeleteData { schema: None, table: "Cat".into(), key: key.clone() })
+            .unwrap()
+            .join("\n");
+        assert_eq!(del, "DELETE FROM \"Cat\" WHERE \"Id\" = 1;");
+
+        let mut vals = std::collections::BTreeMap::new();
+        vals.insert("Name".to_string(), json!("New"));
+        let upd = SqliteGenerator::new()
+            .emit(&Operation::UpdateData { schema: None, table: "Cat".into(), key, values: vals })
+            .unwrap()
+            .join("\n");
+        assert_eq!(upd, "UPDATE \"Cat\" SET \"Name\" = 'New' WHERE \"Id\" = 1;");
     }
 
     #[test]

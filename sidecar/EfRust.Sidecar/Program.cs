@@ -43,6 +43,7 @@ internal sealed class TableDto
     [JsonPropertyName("primary_key")] public PrimaryKeyDto? PrimaryKey { get; set; }
     [JsonPropertyName("foreign_keys")] public List<ForeignKeyDto> ForeignKeys { get; set; } = new();
     [JsonPropertyName("indexes")] public List<IndexDto> Indexes { get; set; } = new();
+    [JsonPropertyName("seed_data")] public List<Dictionary<string, object?>> SeedData { get; set; } = new();
 }
 
 internal sealed class ColumnDto
@@ -336,6 +337,24 @@ internal static class ModelMapper
                     IsUnique = ix.IsUnique,
                     Filter = ix.GetFilter(store),
                 });
+            }
+
+            // Datos sembrados (HasData): clave por nombre de propiedad → se mapea
+            // a nombre de columna para casar con el resto del IR.
+            foreach (var seed in entity.GetSeedData())
+            {
+                var row = new Dictionary<string, object?>();
+                foreach (var p in entity.GetProperties())
+                {
+                    if (seed.TryGetValue(p.Name, out var val))
+                    {
+                        row[p.GetColumnName(store) ?? p.Name] = val;
+                    }
+                }
+                if (row.Count > 0)
+                {
+                    table.SeedData.Add(row);
+                }
             }
 
             dto.Tables.Add(table);

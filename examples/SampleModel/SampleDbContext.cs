@@ -23,6 +23,10 @@ public class SampleDbContext : DbContext
             e.Property(x => x.Name).HasMaxLength(200).IsRequired();
             e.Property(x => x.Email).HasMaxLength(320);
             e.HasIndex(x => x.Email, "IX_Customer_Email").IsUnique();
+            // Datos sembrados (HasData): el sidecar los extrae a seed_data.
+            e.HasData(
+                new Customer { Id = 1, Name = "ACME", Email = "acme@example.com" },
+                new Customer { Id = 2, Name = "Globex", Email = null });
         });
 
         modelBuilder.Entity<Order>(e =>

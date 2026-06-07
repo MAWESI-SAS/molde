@@ -181,6 +181,15 @@ impl SqlGenerator for SqliteGenerator {
                 self.rebuild_table(table, copy_columns)?
             }
             Operation::RawSql { sql } => vec![sql.clone()],
+            Operation::InsertData { schema, table, row } => {
+                self.emit_insert_data(schema.as_deref(), table, row)
+            }
+            Operation::DeleteData { schema, table, key } => {
+                self.emit_delete_data(schema.as_deref(), table, key)
+            }
+            Operation::UpdateData { schema, table, key, values } => {
+                self.emit_update_data(schema.as_deref(), table, key, values)
+            }
             Operation::EnsureExtension { .. }
             | Operation::CreateFunction { .. }
             | Operation::DropFunction { .. }

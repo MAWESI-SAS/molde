@@ -132,6 +132,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            seed_data: vec![],
         });
         m
     }

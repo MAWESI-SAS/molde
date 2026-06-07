@@ -99,6 +99,25 @@ pub enum Operation {
         /// Columnas a copiar de la tabla vieja (las presentes en ambas).
         copy_columns: Vec<String>,
     },
+    /// Inserta una fila de datos sembrados (`HasData`).
+    InsertData {
+        schema: Option<String>,
+        table: String,
+        row: std::collections::BTreeMap<String, serde_json::Value>,
+    },
+    /// Borra una fila sembrada por su clave primaria.
+    DeleteData {
+        schema: Option<String>,
+        table: String,
+        key: std::collections::BTreeMap<String, serde_json::Value>,
+    },
+    /// Actualiza los valores no-clave de una fila sembrada.
+    UpdateData {
+        schema: Option<String>,
+        table: String,
+        key: std::collections::BTreeMap<String, serde_json::Value>,
+        values: std::collections::BTreeMap<String, serde_json::Value>,
+    },
 }
 
 /// Calcula las operaciones necesarias para transformar `from` en `to`.
@@ -124,6 +143,7 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     let mut create_indexes = Vec::new();
     let mut create_triggers = Vec::new();
     let mut rebuilds = Vec::new();
+    let mut data_ops = Vec::new();
     let mut raw_sql = Vec::new();
     let mut drop_tables = Vec::new();
 
@@ -183,6 +203,13 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
                     trigger: tg.clone(),
                 });
             }
+            for row in &t.seed_data {
+                data_ops.push(Operation::InsertData {
+                    schema: t.schema.clone(),
+                    table: t.name.clone(),
+                    row: row.clone(),
+                });
+            }
         }
     }
 
@@ -219,6 +246,8 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
                 .collect();
             rebuilds.push(Operation::RebuildTable { table: new_t.clone(), copy_columns });
         }
+
+        diff_seed_data(old_t, new_t, &mut data_ops);
     }
 
     // Tablas eliminadas (triggers/FKs/índices primero, luego la tabla).
@@ -260,9 +289,70 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     ops.extend(create_indexes);
     ops.extend(create_triggers);
     ops.extend(rebuilds);
+    ops.extend(data_ops);
     ops.extend(raw_sql);
     ops.extend(drop_tables);
     ops
+}
+
+/// Clave de una fila sembrada: el subconjunto de columnas de la PK (o la fila
+/// completa si no hay PK).
+fn seed_key(
+    row: &std::collections::BTreeMap<String, serde_json::Value>,
+    pk_cols: &[String],
+) -> std::collections::BTreeMap<String, serde_json::Value> {
+    if pk_cols.is_empty() {
+        return row.clone();
+    }
+    pk_cols
+        .iter()
+        .filter_map(|c| row.get(c).map(|v| (c.clone(), v.clone())))
+        .collect()
+}
+
+/// Diff de datos sembrados (`HasData`): genera Insert/Update/Delete por fila,
+/// emparejando por clave primaria.
+fn diff_seed_data(old_t: &Table, new_t: &Table, ops: &mut Vec<Operation>) {
+    let pk_cols = new_t
+        .primary_key
+        .as_ref()
+        .map(|p| p.columns.clone())
+        .unwrap_or_default();
+
+    for new_row in &new_t.seed_data {
+        let key = seed_key(new_row, &pk_cols);
+        match old_t.seed_data.iter().find(|r| seed_key(r, &pk_cols) == key) {
+            None => ops.push(Operation::InsertData {
+                schema: new_t.schema.clone(),
+                table: new_t.name.clone(),
+                row: new_row.clone(),
+            }),
+            Some(old_row) if old_row != new_row => {
+                let values = new_row
+                    .iter()
+                    .filter(|(c, _)| !pk_cols.contains(c))
+                    .map(|(c, v)| (c.clone(), v.clone()))
+                    .collect();
+                ops.push(Operation::UpdateData {
+                    schema: new_t.schema.clone(),
+                    table: new_t.name.clone(),
+                    key,
+                    values,
+                });
+            }
+            Some(_) => {}
+        }
+    }
+    for old_row in &old_t.seed_data {
+        let key = seed_key(old_row, &pk_cols);
+        if !new_t.seed_data.iter().any(|r| seed_key(r, &pk_cols) == key) {
+            ops.push(Operation::DeleteData {
+                schema: new_t.schema.clone(),
+                table: new_t.name.clone(),
+                key,
+            });
+        }
+    }
 }
 
 /// ¿El modelo usa la extensión `vector` (pgvector)? Cierto si alguna columna es
@@ -472,6 +562,31 @@ pub fn apply_operation(model: &mut DatabaseModel, op: &Operation) {
                 *t = table.clone();
             }
         }
+        Operation::InsertData { schema, table, row } => {
+            if let Some(t) = find_mut(model, schema, table) {
+                let pk = t.primary_key.as_ref().map(|p| p.columns.clone()).unwrap_or_default();
+                let key = seed_key(row, &pk);
+                if !t.seed_data.iter().any(|r| seed_key(r, &pk) == key) {
+                    t.seed_data.push(row.clone());
+                }
+            }
+        }
+        Operation::DeleteData { schema, table, key } => {
+            if let Some(t) = find_mut(model, schema, table) {
+                let pk = t.primary_key.as_ref().map(|p| p.columns.clone()).unwrap_or_default();
+                t.seed_data.retain(|r| &seed_key(r, &pk) != key);
+            }
+        }
+        Operation::UpdateData { schema, table, key, values } => {
+            if let Some(t) = find_mut(model, schema, table) {
+                let pk = t.primary_key.as_ref().map(|p| p.columns.clone()).unwrap_or_default();
+                if let Some(r) = t.seed_data.iter_mut().find(|r| &seed_key(r, &pk) == key) {
+                    for (c, v) in values {
+                        r.insert(c.clone(), v.clone());
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -520,6 +635,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            seed_data: vec![],
         }
     }
 
@@ -687,6 +803,41 @@ mod tests {
         assert!(!diff(&to, &to)
             .iter()
             .any(|o| matches!(o, Operation::RebuildTable { .. })));
+    }
+
+    #[test]
+    fn seed_data_genera_insert_update_delete() {
+        use serde_json::json;
+        let row = |id: i64, name: &str| {
+            let mut m = std::collections::BTreeMap::new();
+            m.insert("Id".to_string(), json!(id));
+            m.insert("Name".to_string(), json!(name));
+            m
+        };
+        let mk = |rows: Vec<_>| {
+            let mut m = DatabaseModel::empty();
+            let mut t = table("Category", &["Id", "Name"]);
+            t.primary_key = Some(PrimaryKey { name: "PK".into(), columns: vec!["Id".into()] });
+            t.seed_data = rows;
+            m.tables.push(t);
+            m
+        };
+        // from: {1:A, 2:B}; to: {1:A, 2:B2, 3:C} → update(2), insert(3)
+        let from = mk(vec![row(1, "A"), row(2, "B")]);
+        let to = mk(vec![row(1, "A"), row(2, "B2"), row(3, "C")]);
+        let ops = diff(&from, &to);
+        assert_eq!(ops.iter().filter(|o| matches!(o, Operation::InsertData { .. })).count(), 1);
+        assert_eq!(ops.iter().filter(|o| matches!(o, Operation::UpdateData { .. })).count(), 1);
+        // y a la inversa hay un delete.
+        let back = diff(&to, &from);
+        assert_eq!(back.iter().filter(|o| matches!(o, Operation::DeleteData { .. })).count(), 1);
+
+        // Idempotencia + reconstrucción.
+        let mut rebuilt = DatabaseModel::empty();
+        for op in &diff(&DatabaseModel::empty(), &to) {
+            apply_operation(&mut rebuilt, op);
+        }
+        assert!(diff(&rebuilt, &to).is_empty(), "seed reconstruido equivalente");
     }
 
     #[test]
