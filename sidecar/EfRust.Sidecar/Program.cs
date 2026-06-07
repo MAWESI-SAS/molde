@@ -348,6 +348,15 @@ internal static class ModelMapper
                         continue;
                     }
                     var principalStore = StoreObjectIdentifier.Table(principalTable, principal.GetSchema());
+                    // Un tipo owned que COMPARTE tabla con su dueño expone una FK de
+                    // propiedad (Id→Id) que enlaza ambos por la PK. EF NO la emite como
+                    // constraint física cuando comparten tabla; reproducirla generaría una
+                    // auto-referencia espuria. Se omite. (Owned con tabla propia, herencia
+                    // TPH y self-references reales como ManagerId→Id NO entran aquí.)
+                    if (fk.IsOwnership && principalStore.Equals(store))
+                    {
+                        continue;
+                    }
                     var name = fk.GetConstraintName(store, principalStore)
                         ?? $"FK_{tableName}_{principalTable}";
                     if (!seenFks.Add(name))
