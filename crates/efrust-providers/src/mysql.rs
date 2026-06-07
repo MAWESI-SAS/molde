@@ -169,7 +169,8 @@ impl SqlGenerator for MySqlGenerator {
                 self.quote_ident(name),
                 self.quote_ident(table)
             )],
-            Operation::CreateFunction { .. }
+            Operation::EnsureExtension { .. }
+            | Operation::CreateFunction { .. }
             | Operation::DropFunction { .. }
             | Operation::CreateTrigger { .. }
             | Operation::DropTrigger { .. } => self.skip_db_object(op),

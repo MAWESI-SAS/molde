@@ -177,7 +177,8 @@ impl SqlGenerator for SqliteGenerator {
                 );
                 Vec::new()
             }
-            Operation::CreateFunction { .. }
+            Operation::EnsureExtension { .. }
+            | Operation::CreateFunction { .. }
             | Operation::DropFunction { .. }
             | Operation::CreateTrigger { .. }
             | Operation::DropTrigger { .. } => self.skip_db_object(op),

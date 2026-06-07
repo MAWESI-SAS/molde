@@ -292,6 +292,21 @@ mod tests {
     }
 
     #[test]
+    fn postgres_ensure_extension() {
+        let gen = PostgresGenerator::new();
+        let sql = gen
+            .emit(&Operation::EnsureExtension { name: "vector".into() })
+            .unwrap()
+            .join("\n");
+        assert_eq!(sql, "CREATE EXTENSION IF NOT EXISTS \"vector\";");
+        // SQLite la omite con aviso (sin SQL).
+        assert!(SqliteGenerator::new()
+            .emit(&Operation::EnsureExtension { name: "vector".into() })
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
     fn sqlite_omite_funciones_y_triggers() {
         use efrust_core::model::DbFunction;
         let gen = SqliteGenerator::new();

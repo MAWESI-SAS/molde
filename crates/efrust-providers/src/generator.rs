@@ -52,6 +52,7 @@ pub trait SqlGenerator {
     /// manejo de FKs en SQLite. Postgres los implementa de verdad.
     fn skip_db_object(&self, op: &Operation) -> Vec<String> {
         let (kind, name) = match op {
+            Operation::EnsureExtension { name } => ("CREATE EXTENSION", name.as_str()),
             Operation::CreateFunction { function } => ("CREATE FUNCTION", function.name.as_str()),
             Operation::DropFunction { name, .. } => ("DROP FUNCTION", name.as_str()),
             Operation::CreateTrigger { trigger, .. } => ("CREATE TRIGGER", trigger.name.as_str()),

@@ -59,6 +59,12 @@ pub enum Operation {
         table: String,
         name: String,
     },
+    /// Asegura que una extensión del motor esté instalada (p. ej. `vector` de
+    /// pgvector en Postgres). Se antepone cuando el modelo usa tipos/índices que
+    /// la requieren. Motores sin extensiones la omiten.
+    EnsureExtension {
+        name: String,
+    },
     /// Crea una función de esquema (p. ej. función de trigger en Postgres).
     CreateFunction {
         function: DbFunction,
@@ -91,6 +97,7 @@ pub enum Operation {
 ///
 /// > Nota: aún no se detectan renombrados (se ven como drop+add).
 pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
+    let mut ensure_extensions = Vec::new();
     let mut drop_triggers = Vec::new();
     let mut drop_fks = Vec::new();
     let mut drop_indexes = Vec::new();
@@ -102,6 +109,12 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     let mut create_indexes = Vec::new();
     let mut create_triggers = Vec::new();
     let mut drop_tables = Vec::new();
+
+    // Extensión pgvector: asegurarla cuando el destino la requiere y el origen
+    // no. Se antepone a todo (los tipos `vector`/índices hnsw la necesitan).
+    if requires_vector_extension(to) && !requires_vector_extension(from) {
+        ensure_extensions.push(Operation::EnsureExtension { name: "vector".into() });
+    }
 
     // Funciones de esquema: crear nuevas o redefinidas (CREATE OR REPLACE),
     // eliminar las que ya no están. Se crean antes que los triggers que las usan.
@@ -186,6 +199,7 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     }
 
     let mut ops = Vec::new();
+    ops.extend(ensure_extensions);
     ops.extend(drop_triggers);
     ops.extend(drop_fks);
     ops.extend(drop_indexes);
@@ -198,6 +212,19 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     ops.extend(create_triggers);
     ops.extend(drop_tables);
     ops
+}
+
+/// ¿El modelo usa la extensión `vector` (pgvector)? Cierto si alguna columna es
+/// de tipo `vector(...)` / `Pgvector.Vector`, o algún índice usa `hnsw`/`ivfflat`.
+fn requires_vector_extension(model: &DatabaseModel) -> bool {
+    model.tables.iter().any(|t| {
+        t.columns.iter().any(|c| {
+            c.store_type.as_deref().map(|s| s.starts_with("vector")).unwrap_or(false)
+                || c.clr_type.as_deref() == Some("Pgvector.Vector")
+        }) || t.indexes.iter().any(|i| {
+            matches!(i.method.as_deref(), Some("hnsw") | Some("ivfflat"))
+        })
+    })
 }
 
 fn diff_columns(old_t: &Table, new_t: &Table, ops: &mut Vec<Operation>) {
@@ -351,6 +378,9 @@ pub fn apply_operation(model: &mut DatabaseModel, op: &Operation) {
                 t.indexes.retain(|i| &i.name != name);
             }
         }
+        // No altera el IR (no se modela la lista de extensiones); el diff la
+        // recalcula de forma determinista a partir del uso de tipos/índices.
+        Operation::EnsureExtension { .. } => {}
         Operation::CreateFunction { function } => {
             match model
                 .functions
@@ -538,6 +568,32 @@ mod tests {
         let dpos = ops.iter().position(|o| matches!(o, Operation::DropTrigger { .. })).unwrap();
         let cpos = ops.iter().position(|o| matches!(o, Operation::CreateTrigger { .. })).unwrap();
         assert!(dpos < cpos);
+    }
+
+    fn vector_col(name: &str) -> Column {
+        let mut c = col(name);
+        c.store_type = Some("vector(384)".into());
+        c.clr_type = Some("Pgvector.Vector".into());
+        c
+    }
+
+    #[test]
+    fn ensure_extension_vector_se_antepone_y_es_idempotente() {
+        let from = DatabaseModel::empty();
+        let mut to = DatabaseModel::empty();
+        let mut t = table("docs", &["id"]);
+        t.columns.push(vector_col("embedding"));
+        to.tables.push(t);
+
+        let ops = diff(&from, &to);
+        assert!(
+            matches!(ops.first(), Some(Operation::EnsureExtension { name }) if name == "vector"),
+            "EnsureExtension(vector) debe ir primero: {ops:?}"
+        );
+        // Idempotencia: si ambos modelos ya usan vector, no se re-emite.
+        assert!(!diff(&to, &to)
+            .iter()
+            .any(|o| matches!(o, Operation::EnsureExtension { .. })));
     }
 
     #[test]

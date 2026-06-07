@@ -170,6 +170,9 @@ impl SqlGenerator for PostgresGenerator {
                 // En Postgres los índices viven en el esquema de su tabla.
                 vec![format!("DROP INDEX {};", self.qualified(schema.as_deref(), name))]
             }
+            Operation::EnsureExtension { name } => {
+                vec![format!("CREATE EXTENSION IF NOT EXISTS {};", self.quote_ident(name))]
+            }
             // Funciones y triggers se preservan como SQL crudo (no modelables por
             // EF). La definición ya es DDL Postgres válido (pg_get_*def).
             Operation::CreateFunction { function } => vec![function.definition.clone()],

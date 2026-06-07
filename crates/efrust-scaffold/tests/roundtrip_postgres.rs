@@ -37,12 +37,14 @@ async fn round_trip_postgres_objetos_de_busqueda() {
         .connect(&dst)
         .await
         .expect("conectando DST");
-    sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
-        .execute(&pool)
-        .await
-        .expect("creando extensión vector");
 
+    // La extensión `vector` NO se crea a mano: el diff debe anteponer
+    // EnsureExtension y el PostgresGenerator emitir el CREATE EXTENSION.
     let ops = diff(&DatabaseModel::empty(), &src_model);
+    assert!(
+        matches!(ops.first(), Some(efrust_core::diff::Operation::EnsureExtension { .. })),
+        "se esperaba EnsureExtension al inicio del diff"
+    );
     let gen = PostgresGenerator::new();
     for op in &ops {
         for stmt in gen.emit(op).expect("emit SQL") {

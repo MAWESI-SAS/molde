@@ -201,7 +201,8 @@ impl SqlGenerator for SqlServerGenerator {
                 self.quote_ident(name),
                 self.qualified(schema.as_deref(), table)
             )],
-            Operation::CreateFunction { .. }
+            Operation::EnsureExtension { .. }
+            | Operation::CreateFunction { .. }
             | Operation::DropFunction { .. }
             | Operation::CreateTrigger { .. }
             | Operation::DropTrigger { .. } => self.skip_db_object(op),
