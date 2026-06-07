@@ -11,6 +11,14 @@ description = "CLI estilo `dotnet ef` implementado en Rust"
 name = "efrust"
 path = "src/main.rs"
 
+[features]
+# Backend TLS de sqlx. Por defecto rustls; para servidores con certificados
+# X.509 v1 que rustls rechaza, compilar con:
+#   cargo build -p efrust-cli --no-default-features --features tls-native-tls
+default = ["tls-rustls"]
+tls-rustls = ["efrust-scaffold/tls-rustls", "efrust-migrate/tls-rustls"]
+tls-native-tls = ["efrust-scaffold/tls-native-tls", "efrust-migrate/tls-native-tls"]
+
 [dependencies]
 efrust-core = { workspace = true }
 efrust-providers = { workspace = true }

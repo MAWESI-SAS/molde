@@ -7,6 +7,12 @@ license.workspace = true
 
 description = "Database-first: lectura de esquema y generación de C# para efrust"
 
+[features]
+default = ["tls-rustls"]
+tls-rustls = ["sqlx/tls-rustls"]
+# Backend OpenSSL: más tolerante con certificados X.509 v1 (servidores legacy).
+tls-native-tls = ["sqlx/tls-native-tls"]
+
 [dependencies]
 efrust-core = { workspace = true }
 efrust-providers = { workspace = true }

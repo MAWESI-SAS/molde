@@ -21,8 +21,11 @@ repository = ""
 # Internal crates
 efrust-core = { path = "crates/efrust-core" }
 efrust-providers = { path = "crates/efrust-providers" }
-efrust-migrate = { path = "crates/efrust-migrate" }
-efrust-scaffold = { path = "crates/efrust-scaffold" }
+# default-features=false para que el binario (efrust-cli) elija el backend TLS
+# de sqlx vía sus propias features (tls-rustls por defecto / tls-native-tls).
+# Los tests de cada crate igual activan su default al construirse como target.
+efrust-migrate = { path = "crates/efrust-migrate", default-features = false }
+efrust-scaffold = { path = "crates/efrust-scaffold", default-features = false }
 efrust-design = { path = "crates/efrust-design" }
 
 # External
@@ -34,5 +37,8 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "any", "postgres", "sqlite", "mysql"] }
+# El backend TLS NO se fija aquí: lo eligen las features de los crates hoja
+# (tls-rustls por defecto; tls-native-tls para servidores con certificados
+# legacy que rustls rechaza). Ver crates/efrust-cli/Cargo.toml.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "any", "postgres", "sqlite", "mysql"] }
 time = { version = "0.3" }

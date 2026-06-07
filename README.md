@@ -42,6 +42,17 @@ efrust (CLI, Rust)
 > Lo que EF Core no modela (funciones, triggers e índices por expresión) se
 > exporta a `<Context>.DbObjects.sql` y se recrea en `database update`
 > (round-trip completo verificado contra Postgres + pgvector).
+> **Tipos del store:** los tipos no inferibles del CLR (`jsonb`, arrays, `citext`,
+> `vector(N)`, `tsvector`…) se preservan con `HasColumnType`.
+
+### Backend TLS
+
+Por defecto se usa **rustls**. Para servidores con certificados X.509 v1 (legacy)
+que rustls rechaza, compilar el CLI con **native-tls (OpenSSL)**:
+
+```bash
+cargo build -p efrust-cli --no-default-features --features tls-native-tls
+```
 
 La **única** pieza no-Rust es el sidecar .NET, y solo para *leer* el modelo:
 deja que EF Core resuelva Fluent API + data annotations + convenciones, y emite
@@ -76,6 +87,7 @@ Ver [`docs/model-ir.md`](docs/model-ir.md) para el contrato central.
 | **16b** | **Seed data (`HasData`)**: sidecar→IR→`INSERT`/`UPDATE`/`DELETE` + `HasData` en scaffold | ✅ extracción verificada vs EF real; diff/SQL unit |
 | **16c** | **Owned types** (`OwnsOne`): se embeben como columnas en la tabla del owner (vía la fusión por tabla de 16a) | ✅ `Contact_Phone` en Customer |
 | **16d** | **Value converters**: el `store_type` ya refleja el tipo convertido (enum→string) | ✅ `Status` → `varchar(20)` |
+| **18** | Endurecimiento con BD real: feature `tls-native-tls` (certs v1) + `HasColumnType` para tipos del store (jsonb/array/citext/vector) | ✅ scaffold de 219 tablas vs Postgres real |
 
 > **Notas Fase 5c:**
 > - **Normalización de nombres**: el scaffold convierte `snake_case` → `PascalCase`

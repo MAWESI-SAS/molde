@@ -8,7 +8,7 @@
 
 use std::fmt::Write;
 
-use efrust_core::model::{DatabaseModel, ForeignKey, Index, ReferentialAction, Table};
+use efrust_core::model::{Column, DatabaseModel, ForeignKey, Index, ReferentialAction, Table};
 use efrust_providers::Provider;
 
 use crate::csharp::{self, pascalize};
@@ -259,8 +259,15 @@ fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel, pro
                 escape_cs(expr),
                 col.computed_stored
             );
-        } else if let Some(n) = col.max_length {
-            let _ = write!(chain, ".HasMaxLength({n})");
+        } else {
+            if let Some(n) = col.max_length {
+                let _ = write!(chain, ".HasMaxLength({n})");
+            }
+            // Tipos del store no inferibles del CLR (jsonb, arrays, citext,
+            // vector(N), inet…): se preservan con HasColumnType, como hace EF.
+            if let Some(st) = exotic_store_type(col) {
+                let _ = write!(chain, ".HasColumnType(\"{}\")", escape_cs(st));
+            }
         }
         if !chain.is_empty() {
             let _ = writeln!(s, "            entity.Property(e => e.{pname}){chain};");
@@ -451,6 +458,69 @@ fn delete_behavior(action: ReferentialAction) -> Option<&'static str> {
 /// Escapa una cadena para incrustarla en un literal C# entre comillas dobles.
 fn escape_cs(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Tipos de almacenamiento "convencionales" que EF infiere del tipo CLR (+ facetas)
+/// y por tanto NO necesitan `HasColumnType`. El resto (jsonb, arrays, citext,
+/// vector(N), tsvector, inet, hstore…) sí se anotan para no perder el tipo exacto.
+fn exotic_store_type(col: &Column) -> Option<&str> {
+    let st = col.store_type.as_deref()?;
+    let base = st
+        .split('(')
+        .next()
+        .unwrap_or(st)
+        .trim()
+        .to_ascii_lowercase();
+    const CONVENTIONAL: &[&str] = &[
+        "character varying",
+        "varchar",
+        "text",
+        "char",
+        "character",
+        "nvarchar",
+        "nchar",
+        "integer",
+        "int",
+        "bigint",
+        "smallint",
+        "tinyint",
+        "int2",
+        "int4",
+        "int8",
+        "boolean",
+        "bool",
+        "bit",
+        "real",
+        "double precision",
+        "float",
+        "double",
+        "numeric",
+        "decimal",
+        "money",
+        "smallmoney",
+        "uuid",
+        "uniqueidentifier",
+        "date",
+        "timestamp",
+        "timestamp without time zone",
+        "timestamp with time zone",
+        "timestamptz",
+        "datetime",
+        "datetime2",
+        "datetimeoffset",
+        "time",
+        "time without time zone",
+        "bytea",
+        "varbinary",
+        "binary",
+        "blob",
+        "image",
+    ];
+    if CONVENTIONAL.contains(&base.as_str()) {
+        None
+    } else {
+        Some(st)
+    }
 }
 
 /// Genera el artefacto SQL con los objetos que EF no modela: funciones, índices
@@ -796,6 +866,46 @@ mod tests {
         ), "got: {ctx}");
         // El índice por expresión NO va al Fluent API.
         assert!(!ctx.contains("ix_documents_fts"));
+    }
+
+    #[test]
+    fn tipos_exoticos_emiten_has_column_type() {
+        let mut m = DatabaseModel::empty();
+        let mut meta = col("metadata", "System.String", true, None);
+        meta.store_type = Some("jsonb".into());
+        let mut name = col("name", "System.String", false, Some(200));
+        name.store_type = Some("character varying(200)".into());
+        m.tables.push(Table {
+            name: "docs".into(),
+            schema: None,
+            clr_type: None,
+            comment: None,
+            columns: vec![col("id", "System.Int32", false, None), meta, name],
+            primary_key: Some(PrimaryKey {
+                name: "pk".into(),
+                columns: vec!["id".into()],
+            }),
+            foreign_keys: vec![],
+            indexes: vec![],
+            triggers: vec![],
+            seed_data: vec![],
+        });
+        let ctx = &generate(&m, &CodegenOptions::default())
+            .into_iter()
+            .find(|f| f.relative_path == "AppDbContext.cs")
+            .unwrap()
+            .contents;
+        // jsonb (no inferible del CLR) → HasColumnType.
+        assert!(ctx.contains(".HasColumnType(\"jsonb\")"), "got: {ctx}");
+        // varchar convencional → solo HasMaxLength, sin HasColumnType.
+        assert!(
+            ctx.contains("e.Name).HasColumnName(\"name\").HasMaxLength(200);"),
+            "got: {ctx}"
+        );
+        assert!(
+            !ctx.contains("HasColumnType(\"character varying"),
+            "no HasColumnType para varchar"
+        );
     }
 
     #[test]
