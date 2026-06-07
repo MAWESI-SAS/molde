@@ -25,6 +25,7 @@ efrust-providers = { workspace = true }
 efrust-migrate = { workspace = true }
 efrust-scaffold = { workspace = true }
 efrust-design = { workspace = true }
+efrust-lang = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

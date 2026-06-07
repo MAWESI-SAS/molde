@@ -1,10 +1,13 @@
-//! `efrust migrations ...` — add / list / remove. Fase 4.
+//! `efrust migrations ...` — add / list / remove.
+//!
+//! `add` toma el modelo de los archivos `.model` (lenguaje EFM) por defecto;
+//! como modo legacy, con `--assembly` lo obtiene del sidecar .NET.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use clap::Args;
-use efrust_core::migration;
+use efrust_core::{migration, DatabaseModel};
 use efrust_design::author::{self, AddOutcome};
 use efrust_design::sidecar::{self, SidecarOptions};
 use time::OffsetDateTime;
@@ -14,43 +17,48 @@ pub struct AddArgs {
     /// Nombre de la migración (p. ej. `InitialCreate`).
     pub name: String,
 
-    /// Assembly compilado del proyecto del usuario (.dll con el DbContext).
+    /// Directorio con los archivos `.model` (fuente del modelo).
+    #[arg(long, default_value = "models")]
+    pub from_models: PathBuf,
+
+    /// [legacy] Assembly .NET (.dll con el DbContext). Si se indica, el modelo se
+    /// obtiene del sidecar en vez de los `.model`.
     #[arg(long)]
-    pub assembly: PathBuf,
+    pub assembly: Option<PathBuf>,
 
-    /// Ruta al `efrust-sidecar.dll`. Por defecto, la variable `EFRUST_SIDECAR`.
+    /// [legacy] Ruta al `efrust-sidecar.dll` (variable `EFRUST_SIDECAR`).
     #[arg(long, env = "EFRUST_SIDECAR")]
-    pub sidecar: PathBuf,
+    pub sidecar: Option<PathBuf>,
 
-    /// Ejecutable de .NET.
+    /// [legacy] Ejecutable de .NET.
     #[arg(long, default_value = "dotnet")]
     pub dotnet: String,
 
-    /// Nombre del DbContext (si el proyecto tiene varios).
+    /// [legacy] Nombre del DbContext (si el proyecto tiene varios).
     #[arg(long)]
     pub context: Option<String>,
 
     /// Directorio donde se guardan las migraciones.
-    #[arg(long, default_value = "Migrations")]
+    #[arg(long, default_value = "migrations")]
     pub output_dir: PathBuf,
 
-    /// Ruta del snapshot del modelo. Por defecto `<output-dir>/model-snapshot.json`.
+    /// Ruta del snapshot del modelo. Por defecto `<output-dir>/snapshot.json`.
     #[arg(long)]
     pub snapshot: Option<PathBuf>,
 }
 
 #[derive(Args)]
 pub struct ListArgs {
-    #[arg(long, default_value = "Migrations")]
+    #[arg(long, default_value = "migrations")]
     pub output_dir: PathBuf,
 }
 
 #[derive(Args)]
 pub struct RemoveArgs {
-    #[arg(long, default_value = "Migrations")]
+    #[arg(long, default_value = "migrations")]
     pub output_dir: PathBuf,
 
-    /// Ruta del snapshot del modelo. Por defecto `<output-dir>/model-snapshot.json`.
+    /// Ruta del snapshot del modelo. Por defecto `<output-dir>/snapshot.json`.
     #[arg(long)]
     pub snapshot: Option<PathBuf>,
 }
@@ -58,17 +66,26 @@ pub struct RemoveArgs {
 pub fn add(args: AddArgs) -> anyhow::Result<()> {
     let snapshot_path = args
         .snapshot
-        .unwrap_or_else(|| args.output_dir.join("model-snapshot.json"));
+        .clone()
+        .unwrap_or_else(|| args.output_dir.join("snapshot.json"));
 
-    // 1. Obtener el modelo actual desde el sidecar .NET.
-    tracing::info!("obteniendo el modelo desde el sidecar…");
-    let model = sidecar::fetch_model(&SidecarOptions {
-        dotnet: &args.dotnet,
-        sidecar_dll: &args.sidecar,
-        assembly: &args.assembly,
-        context: args.context.as_deref(),
-    })
-    .context("ejecutando el sidecar")?;
+    // 1. Obtener el modelo actual: `.model` (por defecto) o sidecar (legacy).
+    let model = match &args.assembly {
+        Some(assembly) => {
+            let sidecar_dll = args.sidecar.as_ref().context(
+                "modo sidecar: indica --sidecar o la variable EFRUST_SIDECAR junto a --assembly",
+            )?;
+            tracing::info!("obteniendo el modelo desde el sidecar…");
+            sidecar::fetch_model(&SidecarOptions {
+                dotnet: &args.dotnet,
+                sidecar_dll,
+                assembly,
+                context: args.context.as_deref(),
+            })
+            .context("ejecutando el sidecar")?
+        }
+        None => load_model_dir(&args.from_models)?,
+    };
 
     // 2. Generar el identificador de la migración (timestamp UTC + nombre).
     let id = format!("{}_{}", utc_timestamp(), args.name);
@@ -118,12 +135,42 @@ pub fn list(args: ListArgs) -> anyhow::Result<()> {
 pub fn remove(args: RemoveArgs) -> anyhow::Result<()> {
     let snapshot_path = args
         .snapshot
-        .unwrap_or_else(|| args.output_dir.join("model-snapshot.json"));
+        .unwrap_or_else(|| args.output_dir.join("snapshot.json"));
     let removed = author::remove(&args.output_dir, &snapshot_path)
         .context("eliminando la última migración")?;
     println!("Migración eliminada: {removed}");
     println!("  ✔ snapshot regenerado desde las migraciones restantes.");
     Ok(())
+}
+
+/// Lee todos los `.model` de un directorio y los parsea a un modelo IR.
+fn load_model_dir(dir: &Path) -> anyhow::Result<DatabaseModel> {
+    let mut files: Vec<(String, String)> = Vec::new();
+    let entries = std::fs::read_dir(dir)
+        .with_context(|| format!("leyendo el directorio de modelos {}", dir.display()))?;
+    for entry in entries {
+        let path = entry?.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("model") {
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string();
+            let contents = std::fs::read_to_string(&path)
+                .with_context(|| format!("leyendo {}", path.display()))?;
+            files.push((name, contents));
+        }
+    }
+    if files.is_empty() {
+        anyhow::bail!("no se encontraron archivos .model en {}", dir.display());
+    }
+    let refs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(n, c)| (n.as_str(), c.as_str()))
+        .collect();
+    let mut model = efrust_lang::parse_project(&refs).map_err(anyhow::Error::new)?;
+    model.normalize();
+    Ok(model)
 }
 
 /// Timestamp UTC en formato `yyyyMMddHHmmss` (estilo EF).

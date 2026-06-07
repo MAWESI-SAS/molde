@@ -21,7 +21,7 @@ pub struct UpdateArgs {
     pub provider: Option<String>,
 
     /// Directorio de migraciones a aplicar.
-    #[arg(long, default_value = "Migrations")]
+    #[arg(long, default_value = "migrations")]
     pub migrations_dir: PathBuf,
 
     /// Lleva la BD hasta esta migración (id o nombre). `0` revierte todas.
