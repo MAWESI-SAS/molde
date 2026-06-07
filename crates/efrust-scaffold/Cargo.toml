@@ -16,6 +16,7 @@ tls-native-tls = ["sqlx/tls-native-tls"]
 [dependencies]
 efrust-core = { workspace = true }
 efrust-providers = { workspace = true }
+efrust-lang = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }

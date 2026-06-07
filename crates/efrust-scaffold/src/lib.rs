@@ -6,14 +6,19 @@
 //! - [`reader`]: catálogo de la BD → [`efrust_core::DatabaseModel`] (por motor).
 //! - [`codegen`]: modelo → archivos C# (puro, sin BD).
 //! - [`csharp`]: utilidades de mapeo de tipos y nombres.
+//!
+//! Salida nueva: archivos `.model` (lenguaje EFM) vía [`build_model_files`]. El
+//! C# queda como salida legacy ([`build_files`]) hasta su retiro.
 
 pub mod codegen;
 pub mod csharp;
 pub mod reader;
 
 pub use codegen::{CodegenOptions, GeneratedFile};
+pub use efrust_lang::ModelFile;
 pub use reader::ReadError;
 
+use efrust_core::model::DatabaseModel;
 use efrust_providers::Provider;
 
 /// Pipeline completo: conecta, lee el modelo y genera los archivos C#.
@@ -28,6 +33,48 @@ pub async fn build_files(
     let mut opts = opts.clone();
     opts.provider = provider;
     Ok(codegen::generate(&model, &opts))
+}
+
+/// Pipeline database-first hacia el lenguaje EFM: conecta, lee el modelo, lo
+/// canoniza para una salida limpia y emite los archivos `.model`.
+pub async fn build_model_files(
+    url: &str,
+    provider: Provider,
+    schema: Option<&str>,
+) -> Result<Vec<ModelFile>, ReadError> {
+    let mut model = reader::read_model(url, provider, schema).await?;
+    canonicalize_for_models(&mut model);
+    Ok(efrust_lang::emit_project(&model))
+}
+
+/// Reduce el ruido del `.model` generado desde una BD real:
+/// - quita el `store_type` exacto cuando es el convencional para el tipo lógico
+///   (se vuelve a derivar al aplicar; los tipos exóticos como jsonb/vector lo
+///   conservan vía `dbtype=`), igual que el scaffold C# omite `HasColumnType`;
+/// - quita el `schema` de cada tabla cuando coincide con el esquema por defecto.
+pub fn canonicalize_for_models(model: &mut DatabaseModel) {
+    let default_schema = model.default_schema.clone();
+    for t in &mut model.tables {
+        if t.schema == default_schema {
+            t.schema = None;
+        }
+        for c in &mut t.columns {
+            if c.clr_type.is_some() && codegen::exotic_store_type(c).is_none() {
+                c.store_type = None;
+            }
+            // precision/scale solo aplican a decimales; en enteros, Postgres
+            // expone numeric_precision (bits) que aquí es ruido.
+            if c.clr_type.as_deref() != Some("System.Decimal") {
+                c.precision = None;
+                c.scale = None;
+            }
+        }
+        for fk in &mut t.foreign_keys {
+            if fk.principal_schema == default_schema {
+                fk.principal_schema = None;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -54,6 +101,62 @@ mod tests {
             collation: None,
             comment: None,
         }
+    }
+
+    #[test]
+    fn canonicalize_limpia_ruido_y_conserva_exoticos() {
+        use efrust_core::model::DatabaseModel;
+        let mut m = DatabaseModel::empty();
+        m.default_schema = Some("public".into());
+
+        let mut id = col("Id", "System.Int32", false, true);
+        id.precision = Some(32); // ruido de Postgres para enteros
+        id.scale = Some(0);
+        let mut name = col("Name", "System.String", false, false);
+        name.store_type = Some("character varying(200)".into()); // convencional → se quita
+        name.max_length = Some(200);
+        let mut total = col("Total", "System.Decimal", false, false);
+        total.store_type = Some("numeric(18,2)".into()); // convencional → se quita
+        total.precision = Some(18);
+        total.scale = Some(2); // decimal → se conserva
+        let mut meta = col("Meta", "System.String", true, false);
+        meta.store_type = Some("jsonb".into()); // exótico → se conserva como dbtype
+
+        m.tables.push(Table {
+            name: "Customer".into(),
+            schema: Some("public".into()), // == default → se quita
+            clr_type: None,
+            comment: None,
+            columns: vec![id, name, total, meta],
+            primary_key: None,
+            foreign_keys: vec![],
+            indexes: vec![],
+            triggers: vec![],
+            seed_data: vec![],
+        });
+
+        canonicalize_for_models(&mut m);
+        let t = &m.tables[0];
+        assert_eq!(t.schema, None);
+        let id = t.column("Id").unwrap();
+        assert_eq!(id.precision, None, "precision de entero es ruido");
+        let name = t.column("Name").unwrap();
+        assert_eq!(name.store_type, None, "varchar convencional se quita");
+        assert_eq!(name.max_length, Some(200));
+        let total = t.column("Total").unwrap();
+        assert_eq!(total.store_type, None, "numeric convencional se quita");
+        assert_eq!(
+            total.precision,
+            Some(18),
+            "precision de decimal se conserva"
+        );
+        assert_eq!(total.scale, Some(2));
+        let meta = t.column("Meta").unwrap();
+        assert_eq!(
+            meta.store_type.as_deref(),
+            Some("jsonb"),
+            "exótico se conserva"
+        );
     }
 
     /// Round-trip real: crea una tabla en SQLite con el provider, la lee con el

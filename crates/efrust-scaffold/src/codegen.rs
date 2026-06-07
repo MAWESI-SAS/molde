@@ -478,7 +478,7 @@ fn escape_cs(s: &str) -> String {
 /// Tipos de almacenamiento "convencionales" que EF infiere del tipo CLR (+ facetas)
 /// y por tanto NO necesitan `HasColumnType`. El resto (jsonb, arrays, citext,
 /// vector(N), tsvector, inet, hstore…) sí se anotan para no perder el tipo exacto.
-fn exotic_store_type(col: &Column) -> Option<&str> {
+pub(crate) fn exotic_store_type(col: &Column) -> Option<&str> {
     let st = col.store_type.as_deref()?;
     let base = st
         .split('(')
