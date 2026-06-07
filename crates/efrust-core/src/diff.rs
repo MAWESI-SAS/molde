@@ -88,6 +88,17 @@ pub enum Operation {
     RawSql {
         sql: String,
     },
+    /// Reconstrucción completa de una tabla existente. La emite `diff()` (además
+    /// de los ALTER granulares) cuando una tabla cambia de forma que SQLite no
+    /// puede aplicar con `ALTER` (cambio de tipo de columna, alta/baja de FK).
+    /// SQLite la materializa (create-new/copy/drop/rename); el resto de motores
+    /// la ignoran y usan los ALTER granulares.
+    RebuildTable {
+        /// Esquema final deseado de la tabla.
+        table: Table,
+        /// Columnas a copiar de la tabla vieja (las presentes en ambas).
+        copy_columns: Vec<String>,
+    },
 }
 
 /// Calcula las operaciones necesarias para transformar `from` en `to`.
@@ -112,6 +123,7 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     let mut add_fks = Vec::new();
     let mut create_indexes = Vec::new();
     let mut create_triggers = Vec::new();
+    let mut rebuilds = Vec::new();
     let mut raw_sql = Vec::new();
     let mut drop_tables = Vec::new();
 
@@ -183,6 +195,30 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
         diff_foreign_keys(old_t, new_t, &mut add_fks, &mut drop_fks);
         diff_indexes(old_t, new_t, &mut create_indexes, &mut drop_indexes);
         diff_triggers(old_t, new_t, &mut create_triggers, &mut drop_triggers);
+
+        // Cambios que SQLite no puede hacer con ALTER (tipo de columna o FK):
+        // se emite además una reconstrucción completa que SQLite materializa.
+        let column_type_changed = new_t
+            .columns
+            .iter()
+            .any(|nc| matches!(old_t.column(&nc.name), Some(oc) if oc != nc));
+        let fk_changed = new_t
+            .foreign_keys
+            .iter()
+            .any(|f| !old_t.foreign_keys.iter().any(|o| o.name == f.name))
+            || old_t
+                .foreign_keys
+                .iter()
+                .any(|f| !new_t.foreign_keys.iter().any(|o| o.name == f.name));
+        if column_type_changed || fk_changed {
+            let copy_columns = new_t
+                .columns
+                .iter()
+                .filter(|c| old_t.column(&c.name).is_some())
+                .map(|c| c.name.clone())
+                .collect();
+            rebuilds.push(Operation::RebuildTable { table: new_t.clone(), copy_columns });
+        }
     }
 
     // Tablas eliminadas (triggers/FKs/índices primero, luego la tabla).
@@ -223,6 +259,7 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     ops.extend(add_fks);
     ops.extend(create_indexes);
     ops.extend(create_triggers);
+    ops.extend(rebuilds);
     ops.extend(raw_sql);
     ops.extend(drop_tables);
     ops
@@ -426,6 +463,15 @@ pub fn apply_operation(model: &mut DatabaseModel, op: &Operation) {
                 model.raw_objects.push(sql.clone());
             }
         }
+        Operation::RebuildTable { table, .. } => {
+            if let Some(t) = model
+                .tables
+                .iter_mut()
+                .find(|t| t.schema.as_deref() == table.schema.as_deref() && t.name == table.name)
+            {
+                *t = table.clone();
+            }
+        }
     }
 }
 
@@ -613,6 +659,34 @@ mod tests {
         assert!(!diff(&to, &to)
             .iter()
             .any(|o| matches!(o, Operation::EnsureExtension { .. })));
+    }
+
+    #[test]
+    fn cambio_de_tipo_en_tabla_existente_emite_rebuild() {
+        let mut from = DatabaseModel::empty();
+        let mut t0 = table("docs", &["id", "title"]);
+        // title pasa de integer (col() default) a string en `to`.
+        from.tables.push(t0.clone());
+
+        let mut to = DatabaseModel::empty();
+        let mut title = col("title");
+        title.store_type = Some("text".into());
+        title.clr_type = Some("System.String".into());
+        t0.columns = vec![col("id"), title];
+        to.tables.push(t0);
+
+        let ops = diff(&from, &to);
+        let rebuild = ops.iter().find_map(|o| match o {
+            Operation::RebuildTable { table, copy_columns } => Some((table, copy_columns)),
+            _ => None,
+        });
+        let (rt, copy) = rebuild.expect("debe emitir RebuildTable");
+        assert_eq!(rt.name, "docs");
+        assert_eq!(copy, &vec!["id".to_string(), "title".to_string()]);
+        // Idempotencia: sin cambios no hay rebuild.
+        assert!(!diff(&to, &to)
+            .iter()
+            .any(|o| matches!(o, Operation::RebuildTable { .. })));
     }
 
     #[test]

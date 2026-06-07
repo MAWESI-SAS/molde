@@ -186,6 +186,8 @@ impl SqlGenerator for PostgresGenerator {
                 self.qualified(schema.as_deref(), table)
             )],
             Operation::RawSql { sql } => vec![sql.clone()],
+            // Postgres usa ALTER granular; la reconstrucción es solo para SQLite.
+            Operation::RebuildTable { .. } => Vec::new(),
         };
         Ok(sql)
     }

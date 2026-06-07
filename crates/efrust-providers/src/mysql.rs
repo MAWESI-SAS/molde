@@ -185,6 +185,7 @@ impl SqlGenerator for MySqlGenerator {
                 self.quote_ident(table)
             )],
             Operation::RawSql { sql } => vec![sql.clone()],
+            Operation::RebuildTable { .. } => Vec::new(),
             Operation::EnsureExtension { .. }
             | Operation::CreateFunction { .. }
             | Operation::DropFunction { .. }

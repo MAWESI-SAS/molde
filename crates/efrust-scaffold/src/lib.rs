@@ -132,4 +132,71 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
     }
+
+    /// Rebuild real en SQLite: un cambio de tipo de columna sobre una tabla con
+    /// datos se aplica vía RebuildTable preservando las filas.
+    #[tokio::test]
+    async fn sqlite_rebuild_preserva_datos() {
+        use efrust_core::diff::diff;
+        use efrust_core::model::DatabaseModel;
+        use sqlx::Row;
+
+        let path = std::env::temp_dir().join(format!("efrust_rebuild_{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let url = format!("sqlite://{}?mode=rwc", path.display());
+
+        let person = |age_clr: &str| Table {
+            name: "Person".into(),
+            schema: None,
+            clr_type: None,
+            comment: None,
+            columns: vec![
+                col("Id", "System.Int32", false, true),
+                col("Age", age_clr, true, false),
+            ],
+            primary_key: Some(PrimaryKey { name: "PK_Person".into(), columns: vec!["Id".into()] }),
+            foreign_keys: vec![],
+            indexes: vec![],
+            triggers: vec![],
+        };
+        let mut old = DatabaseModel::empty();
+        old.tables.push(person("System.String")); // Age TEXT
+        let mut new = DatabaseModel::empty();
+        new.tables.push(person("System.Int64")); // Age INTEGER
+
+        install_default_drivers();
+        let pool = AnyPoolOptions::new().max_connections(1).connect(&url).await.unwrap();
+        let gen = efrust_providers::SqliteGenerator::new();
+
+        // Crear la tabla vieja + una fila.
+        for stmt in gen.emit(&Operation::CreateTable { table: old.tables[0].clone() }).unwrap() {
+            sqlx::query(&stmt).execute(&pool).await.unwrap();
+        }
+        sqlx::query("INSERT INTO \"Person\" (\"Age\") VALUES ('42');")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Aplicar el diff (incluye RebuildTable).
+        let ops = diff(&old, &new);
+        assert!(ops.iter().any(|o| matches!(o, Operation::RebuildTable { .. })));
+        for stmt in gen.emit_all(&ops).unwrap() {
+            sqlx::query(&stmt).execute(&pool).await.unwrap();
+        }
+
+        // La fila sobrevive a la reconstrucción.
+        let row = sqlx::query("SELECT COUNT(*) AS n FROM \"Person\";")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let n: i64 = row.try_get("n").unwrap();
+        assert_eq!(n, 1, "la fila debe sobrevivir al rebuild");
+        pool.close().await;
+
+        // El modelo releído tiene la tabla reconstruida con 2 columnas.
+        let model = reader::read_model(&url, Provider::Sqlite, None).await.unwrap();
+        assert_eq!(model.table(None, "Person").unwrap().columns.len(), 2);
+
+        let _ = std::fs::remove_file(&path);
+    }
 }

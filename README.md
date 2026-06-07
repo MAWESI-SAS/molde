@@ -31,7 +31,9 @@ efrust (CLI, Rust)
 | Búsqueda / full-text en scaffold + round-trip | ✅ pgvector+tsvector+triggers | ✅ FULLTEXT+generated | — | ✅ computed PERSISTED · FTS best-effort |
 | Paridad verificada con `dotnet ef` | ✅ | — | — | — |
 
-> SQLite: las FKs se declaran inline en `CREATE TABLE` (no soporta `ALTER ADD FK`).
+> SQLite: las FKs se declaran inline en `CREATE TABLE`; el cambio de tipo de
+> columna y el alta/baja de FK sobre tablas existentes se aplican con
+> reconstrucción de tabla (create-new/copy/drop/rename), estilo EF.
 > SQL Server usa el driver TDS `tiberius`; el resto usa `sqlx` (`Any`).
 > **PostgreSQL — objetos de búsqueda:** el scaffold detecta y preserva columnas
 > `vector(N)` (pgvector → `Pgvector.Vector`) y `tsvector` (→ `NpgsqlTsVector`,
@@ -68,6 +70,7 @@ Ver [`docs/model-ir.md`](docs/model-ir.md) para el contrato central.
 | **11** | Singularización de nombres en scaffold (`documents` → `Document`) | ✅ |
 | **12** | **Búsqueda en MySQL**: índices FULLTEXT + columnas generadas en scaffold y round-trip | ✅ verificado vs MySQL 8 |
 | **13** | **SQL Server**: columnas computadas `PERSISTED` (round-trip) + full-text best-effort (`raw_objects`/`RawSql`) | ✅ computed vs SQL Server 2022; FTS code-complete |
+| **14** | **SQLite table-rebuild**: `ALTER COLUMN` y alta/baja de FK sobre tablas existentes vía reconstrucción | ✅ verificado (preserva datos) |
 
 > **Notas Fase 5c:**
 > - **Normalización de nombres**: el scaffold convierte `snake_case` → `PascalCase`

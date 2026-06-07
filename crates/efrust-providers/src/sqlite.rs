@@ -145,14 +145,14 @@ impl SqlGenerator for SqliteGenerator {
                 self.quote_ident(name)
             )],
             Operation::AlterColumn { table, new, .. } => {
-                // Requiere el patrón "table rebuild"; pendiente para fase posterior.
-                return Err(ProviderError::Unsupported {
-                    provider: "sqlite",
-                    detail: format!(
-                        "ALTER COLUMN sobre '{}.{}' requiere reconstrucción de tabla",
-                        table, new.name
-                    ),
-                });
+                // SQLite no soporta ALTER COLUMN; el cambio de tipo se materializa
+                // mediante la `RebuildTable` que `diff()` emite para esta tabla.
+                tracing::debug!(
+                    "SQLite: ALTER COLUMN '{}.{}' se aplica vía RebuildTable",
+                    table,
+                    new.name
+                );
+                Vec::new()
             }
             Operation::CreateIndex { table, index, .. } => vec![self.create_index(table, index)],
             Operation::DropIndex { name, .. } => {
@@ -176,6 +176,9 @@ impl SqlGenerator for SqliteGenerator {
                     table
                 );
                 Vec::new()
+            }
+            Operation::RebuildTable { table, copy_columns } => {
+                self.rebuild_table(table, copy_columns)?
             }
             Operation::RawSql { sql } => vec![sql.clone()],
             Operation::EnsureExtension { .. }
@@ -203,5 +206,46 @@ impl SqliteGenerator {
             self.quote_ident(table),
             cols.join(", "),
         )
+    }
+
+    /// Reconstrucción de tabla estilo EF: crea una tabla temporal con el esquema
+    /// final (FKs inline), copia los datos de las columnas comunes, elimina la
+    /// original, renombra la temporal y recrea los índices. Es la vía de SQLite
+    /// para `ALTER COLUMN` y alta/baja de FK sobre tablas existentes.
+    fn rebuild_table(
+        &self,
+        table: &Table,
+        copy_columns: &[String],
+    ) -> Result<Vec<String>, ProviderError> {
+        let orig = &table.name;
+        let tmp_name = format!("{orig}_efrust_new");
+        let mut tmp_table = table.clone();
+        tmp_table.name = tmp_name.clone();
+
+        let mut out = Vec::new();
+        out.push(self.create_table(&tmp_table)?);
+        if !copy_columns.is_empty() {
+            let cols = copy_columns
+                .iter()
+                .map(|c| self.quote_ident(c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            out.push(format!(
+                "INSERT INTO {} ({cols}) SELECT {cols} FROM {};",
+                self.quote_ident(&tmp_name),
+                self.quote_ident(orig),
+            ));
+        }
+        out.push(format!("DROP TABLE {};", self.quote_ident(orig)));
+        out.push(format!(
+            "ALTER TABLE {} RENAME TO {};",
+            self.quote_ident(&tmp_name),
+            self.quote_ident(orig),
+        ));
+        // Los índices cayeron con la tabla original; se recrean sobre la nueva.
+        for idx in &table.indexes {
+            out.push(self.create_index(orig, idx));
+        }
+        Ok(out)
     }
 }

@@ -150,7 +150,9 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_alter_column_no_soportado_aun() {
+    fn sqlite_alter_column_se_difiere_al_rebuild() {
+        // SQLite ya no falla en ALTER COLUMN: lo omite (no-op) porque el cambio
+        // se materializa con la RebuildTable que emite `diff()`.
         let gen = SqliteGenerator::new();
         let op = Operation::AlterColumn {
             schema: None,
@@ -158,7 +160,7 @@ mod tests {
             new: name_col(),
             old: name_col(),
         };
-        assert!(gen.emit(&op).is_err());
+        assert!(gen.emit(&op).unwrap().is_empty());
     }
 
     fn fk_op() -> Operation {
@@ -316,6 +318,28 @@ mod tests {
             })
             .unwrap();
         assert!(out.is_empty(), "SQLite omite funciones con aviso");
+    }
+
+    #[test]
+    fn sqlite_rebuild_table_secuencia() {
+        use efrust_core::model::PrimaryKey;
+        let mut t = customer();
+        t.name = "Order".into();
+        t.primary_key = Some(PrimaryKey { name: "PK_Order".into(), columns: vec!["Id".into()] });
+        let op = Operation::RebuildTable {
+            table: t,
+            copy_columns: vec!["Id".into(), "Name".into()],
+        };
+        let sql = SqliteGenerator::new().emit(&op).unwrap();
+        let joined = sql.join("\n");
+        assert!(joined.contains("CREATE TABLE \"Order_efrust_new\""), "got: {joined}");
+        assert!(joined.contains("INSERT INTO \"Order_efrust_new\" (\"Id\", \"Name\") SELECT \"Id\", \"Name\" FROM \"Order\";"));
+        assert!(joined.contains("DROP TABLE \"Order\";"));
+        assert!(joined.contains("ALTER TABLE \"Order_efrust_new\" RENAME TO \"Order\";"));
+
+        // Motores capaces: RebuildTable es no-op (usan ALTER granular).
+        assert!(PostgresGenerator::new().emit(&op).unwrap().is_empty());
+        assert!(MySqlGenerator::new().emit(&op).unwrap().is_empty());
     }
 
     #[test]
