@@ -1,0 +1,160 @@
+{
+  "format_version": 1,
+  "product_version": "9.0.16.0",
+  "default_schema": null,
+  "tables": [
+    {
+      "name": "Customer",
+      "schema": null,
+      "clr_type": "SampleModel.Customer",
+      "comment": null,
+      "columns": [
+        {
+          "name": "Id",
+          "store_type": "integer",
+          "clr_type": "System.Int32",
+          "is_nullable": false,
+          "is_identity": true,
+          "max_length": null,
+          "precision": null,
+          "scale": null,
+          "default_value_sql": null,
+          "computed_sql": null,
+          "computed_stored": false,
+          "collation": null,
+          "comment": null
+        },
+        {
+          "name": "Email",
+          "store_type": "character varying(320)",
+          "clr_type": "System.String",
+          "is_nullable": true,
+          "is_identity": false,
+          "max_length": 320,
+          "precision": null,
+          "scale": null,
+          "default_value_sql": null,
+          "computed_sql": null,
+          "computed_stored": false,
+          "collation": null,
+          "comment": null
+        },
+        {
+          "name": "Name",
+          "store_type": "character varying(200)",
+          "clr_type": "System.String",
+          "is_nullable": false,
+          "is_identity": false,
+          "max_length": 200,
+          "precision": null,
+          "scale": null,
+          "default_value_sql": null,
+          "computed_sql": null,
+          "computed_stored": false,
+          "collation": null,
+          "comment": null
+        }
+      ],
+      "primary_key": {
+        "name": "PK_Customer",
+        "columns": [
+          "Id"
+        ]
+      },
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "IX_Customer_Email",
+          "columns": [
+            "Email"
+          ],
+          "is_unique": true,
+          "filter": null
+        }
+      ]
+    },
+    {
+      "name": "Order",
+      "schema": null,
+      "clr_type": "SampleModel.Order",
+      "comment": null,
+      "columns": [
+        {
+          "name": "Id",
+          "store_type": "integer",
+          "clr_type": "System.Int32",
+          "is_nullable": false,
+          "is_identity": true,
+          "max_length": null,
+          "precision": null,
+          "scale": null,
+          "default_value_sql": null,
+          "computed_sql": null,
+          "computed_stored": false,
+          "collation": null,
+          "comment": null
+        },
+        {
+          "name": "CustomerId",
+          "store_type": "integer",
+          "clr_type": "System.Int32",
+          "is_nullable": false,
+          "is_identity": false,
+          "max_length": null,
+          "precision": null,
+          "scale": null,
+          "default_value_sql": null,
+          "computed_sql": null,
+          "computed_stored": false,
+          "collation": null,
+          "comment": null
+        },
+        {
+          "name": "Total",
+          "store_type": "TEXT",
+          "clr_type": "System.Decimal",
+          "is_nullable": false,
+          "is_identity": false,
+          "max_length": null,
+          "precision": null,
+          "scale": null,
+          "default_value_sql": null,
+          "computed_sql": null,
+          "computed_stored": false,
+          "collation": null,
+          "comment": null
+        }
+      ],
+      "primary_key": {
+        "name": "PK_Order",
+        "columns": [
+          "Id"
+        ]
+      },
+      "foreign_keys": [
+        {
+          "name": "FK_Order_Customer",
+          "columns": [
+            "CustomerId"
+          ],
+          "principal_table": "Customer",
+          "principal_schema": null,
+          "principal_columns": [
+            "Id"
+          ],
+          "on_delete": "cascade"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "IX_Order_CustomerId",
+          "columns": [
+            "CustomerId"
+          ],
+          "is_unique": false,
+          "filter": null
+        }
+      ]
+    }
+  ]
+}

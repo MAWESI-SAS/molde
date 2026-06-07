@@ -1,0 +1,25 @@
+[package]
+name = "efrust-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+description = "CLI estilo `dotnet ef` implementado en Rust"
+
+[[bin]]
+name = "efrust"
+path = "src/main.rs"
+
+[dependencies]
+efrust-core = { workspace = true }
+efrust-providers = { workspace = true }
+efrust-migrate = { workspace = true }
+efrust-scaffold = { workspace = true }
+efrust-design = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+time = { workspace = true }

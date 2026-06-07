@@ -1,0 +1,19 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock
+
+# .NET sidecar
+[Bb]in/
+[Oo]bj/
+*.user
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Local env / scratch
+.env
+*.local
+scratch/

@@ -1,0 +1,13 @@
+[package]
+name = "efrust-providers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+description = "Generación de SQL por motor (trait SqlGenerator) para efrust"
+
+[dependencies]
+efrust-core = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

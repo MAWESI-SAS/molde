@@ -1,0 +1,19 @@
+[package]
+name = "efrust-migrate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+description = "Runtime de aplicación de migraciones (sqlx + tiberius) para efrust"
+
+[dependencies]
+efrust-core = { workspace = true }
+efrust-providers = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true, features = ["net", "sync"] }
+# SQL Server (TDS) — fuera del driver Any de sqlx.
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
+tokio-util = { version = "0.7", features = ["compat"] }

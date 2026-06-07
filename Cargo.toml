@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/efrust-cli",
+    "crates/efrust-core",
+    "crates/efrust-providers",
+    "crates/efrust-migrate",
+    "crates/efrust-scaffold",
+    "crates/efrust-design",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+authors = ["mauricio <mauricio@mawesi.net>"]
+repository = ""
+
+[workspace.dependencies]
+# Internal crates
+efrust-core = { path = "crates/efrust-core" }
+efrust-providers = { path = "crates/efrust-providers" }
+efrust-migrate = { path = "crates/efrust-migrate" }
+efrust-scaffold = { path = "crates/efrust-scaffold" }
+efrust-design = { path = "crates/efrust-design" }
+
+# External
+clap = { version = "4.5", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "any", "postgres", "sqlite", "mysql"] }
+time = { version = "0.3" }

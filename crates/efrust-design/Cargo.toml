@@ -1,0 +1,16 @@
+[package]
+name = "efrust-design"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+description = "Orquestación model-first: invocar el sidecar y autorar migraciones"
+
+[dependencies]
+efrust-core = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+efrust-providers = { workspace = true }

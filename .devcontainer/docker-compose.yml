@@ -1,0 +1,53 @@
+# Dos servicios:
+#   app → contenedor de desarrollo (Rust + .NET 9), donde vive VS Code / Claude.
+#   db  → PostgreSQL local y desechable para probar scaffolding y migraciones.
+# SQLite no necesita servicio (es basado en archivo).
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: efrust-dev
+    volumes:
+      # Monta la raíz del repo en la ruta estándar de devcontainers.
+      - ..:/workspaces/EF_RUST:cached
+      # Cache persistente de cargo entre rebuilds.
+      - efrust-cargo-cache:/usr/local/cargo/registry
+    command: sleep infinity
+    environment:
+      # Formato sqlx (lo consume el CLI en Rust).
+      DATABASE_URL: postgres://efrust:efrust@db:5432/efrust_dev
+      # Formato .NET (lo consume el sidecar / dotnet-ef) — misma convención que MAWESI.
+      DATABASE_CONNECTION_STRING: Host=db;Port=5432;Database=efrust_dev;Username=efrust;Password=efrust
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - efrust-net
+
+  db:
+    image: postgres:17-bookworm
+    container_name: efrust-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: efrust
+      POSTGRES_PASSWORD: efrust
+      POSTGRES_DB: efrust_dev
+    volumes:
+      - efrust-pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U efrust -d efrust_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - efrust-net
+
+volumes:
+  efrust-pgdata:
+  efrust-cargo-cache:
+
+networks:
+  efrust-net:

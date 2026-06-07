@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SampleModel</RootNamespace>
+    <!-- Copia las dependencias NuGet a bin/ y genera deps.json, de modo que el
+         sidecar pueda resolver el provider EF al cargar el assembly. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <!--
+    Proyecto de ejemplo (NO es parte del CLI). Sirve para verificar la Fase 3:
+    el sidecar carga su DLL, instancia el DbContext y emite el Model IR.
+    Configura el modelo con Fluent API real (relaciones, HasMaxLength, índices)
+    para demostrar que el sidecar captura lo que un parser estático no podría.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.*" />
+    <!-- Npgsql es 100% gestionado (sin librería nativa): el sidecar puede
+         construir el modelo cargando solo DLLs administradas. -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.*" />
+  </ItemGroup>
+
+</Project>
