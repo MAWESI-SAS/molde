@@ -510,15 +510,11 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         });
     }
 
-    // Triggers + funciones de trigger. EF no las modela; se preservan crudas.
-    let mut functions: BTreeMap<(Option<String>, String), efrust_core::model::DbFunction> =
-        BTreeMap::new();
+    // Triggers (EF no los modela; se preservan crudos).
     let trg_rows = sqlx::query(&format!(
         "SELECT t.relname::text AS table_name, tg.tgname::text AS trigger_name, \
                 tg.tgtype::int AS tgtype, pg_get_triggerdef(tg.oid)::text AS def, \
-                p.proname::text AS func_name, fn.nspname::text AS func_schema, \
-                pg_get_functiondef(p.oid)::text AS func_def, \
-                EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')::int AS func_is_ext \
+                p.proname::text AS func_name, fn.nspname::text AS func_schema \
          FROM pg_trigger tg \
          JOIN pg_class t ON t.oid = tg.tgrelid \
          JOIN pg_namespace n ON n.oid = t.relnamespace \
@@ -539,37 +535,64 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         let def: String = r.try_get("def").unwrap_or_default();
         let func_name: String = r.try_get("func_name").unwrap_or_default();
         let func_schema: String = r.try_get("func_schema").unwrap_or_default();
-        let func_def: Option<String> = r.try_get("func_def").ok().flatten();
-        let func_is_ext: i32 = r.try_get("func_is_ext").unwrap_or(0);
 
         let (timing, events) = parse_pg_trigger_type(tgtype);
-        let func_qualified = format!("{func_schema}.{func_name}");
         table.triggers.push(efrust_core::model::Trigger {
             name: r.try_get("trigger_name")?,
             table: table_name.clone(),
             schema: Some(schema.to_string()),
             timing,
             events,
-            function: Some(func_qualified),
+            function: Some(format!("{func_schema}.{func_name}")),
             definition: def,
         });
-
-        // Funciones de usuario referenciadas (no de extensiones ni del catálogo).
-        if func_is_ext == 0 && func_schema != "pg_catalog" && func_schema != "information_schema" {
-            if let Some(fd) = func_def {
-                functions
-                    .entry((Some(func_schema.clone()), func_name.clone()))
-                    .or_insert_with(|| efrust_core::model::DbFunction {
-                        name: func_name.clone(),
-                        schema: Some(func_schema.clone()),
-                        definition: fd,
-                    });
-            }
-        }
     }
 
+    // Todas las funciones de usuario del esquema (no solo las de trigger): las
+    // usadas en triggers Y en expresiones de índice (p. ej. `immutable_unaccent`).
+    // Se excluyen las de extensiones (deptype 'e') y las C/internas.
+    let fn_rows = sqlx::query(&format!(
+        "SELECT p.proname::text AS name, n.nspname::text AS schema, \
+                pg_get_functiondef(p.oid)::text AS def \
+         FROM pg_proc p \
+         JOIN pg_namespace n ON n.oid = p.pronamespace \
+         JOIN pg_language l ON l.oid = p.prolang \
+         WHERE n.nspname = '{sc}' AND p.prokind = 'f' \
+           AND l.lanname NOT IN ('c', 'internal') \
+           AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e') \
+         ORDER BY p.proname"
+    ))
+    .fetch_all(pool)
+    .await?;
+    let mut functions = Vec::new();
+    for r in fn_rows {
+        let def: String = r.try_get("def").unwrap_or_default();
+        if def.is_empty() {
+            continue;
+        }
+        functions.push(efrust_core::model::DbFunction {
+            name: r.try_get("name")?,
+            schema: r.try_get::<String, _>("schema").ok(),
+            definition: def,
+        });
+    }
+
+    // Extensiones instaladas (se aseguran con CREATE EXTENSION IF NOT EXISTS).
+    // `plpgsql` viene por defecto en toda BD → se omite.
+    let ext_rows = sqlx::query(
+        "SELECT extname::text AS name FROM pg_extension \
+         WHERE extname <> 'plpgsql' ORDER BY extname",
+    )
+    .fetch_all(pool)
+    .await?;
+    let extensions: Vec<String> = ext_rows
+        .iter()
+        .filter_map(|r| r.try_get::<String, _>("name").ok())
+        .collect();
+
     model.tables = tables.into_values().collect();
-    model.functions = functions.into_values().collect();
+    model.functions = functions;
+    model.extensions = extensions;
     Ok(model)
 }
 

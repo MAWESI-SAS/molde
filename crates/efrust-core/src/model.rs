@@ -39,6 +39,10 @@ pub struct DatabaseModel {
     /// Server: `CREATE FULLTEXT CATALOG`/`CREATE FULLTEXT INDEX`).
     #[serde(default)]
     pub raw_objects: Vec<String>,
+    /// Extensiones del motor instaladas (Postgres: `pg_trgm`, `unaccent`,
+    /// `vector`…). Se aseguran con `CREATE EXTENSION IF NOT EXISTS` antes del DDL.
+    #[serde(default)]
+    pub extensions: Vec<String>,
 }
 
 impl DatabaseModel {
@@ -51,6 +55,7 @@ impl DatabaseModel {
             tables: Vec::new(),
             functions: Vec::new(),
             raw_objects: Vec::new(),
+            extensions: Vec::new(),
         }
     }
 
@@ -77,6 +82,7 @@ impl DatabaseModel {
             (a.schema.as_deref(), a.name.as_str()).cmp(&(b.schema.as_deref(), b.name.as_str()))
         });
         self.raw_objects.sort();
+        self.extensions.sort();
     }
 }
 

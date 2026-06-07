@@ -155,12 +155,15 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
         }
     }
 
-    // Extensión pgvector: asegurarla cuando el destino la requiere y el origen
-    // no. Se antepone a todo (los tipos `vector`/índices hnsw la necesitan).
-    if requires_vector_extension(to) && !requires_vector_extension(from) {
-        ensure_extensions.push(Operation::EnsureExtension {
-            name: "vector".into(),
-        });
+    // Extensiones a asegurar: las declaradas explícitamente en el modelo
+    // (leídas de la BD) más `vector` si se infiere por uso de tipos/índices
+    // (flujo model-first, que no lista extensiones). Se anteponen a todo el DDL.
+    let needed = wanted_extensions(to);
+    let already = wanted_extensions(from);
+    for ext in &needed {
+        if !already.contains(ext) {
+            ensure_extensions.push(Operation::EnsureExtension { name: ext.clone() });
+        }
     }
 
     // Funciones de esquema: crear nuevas o redefinidas (CREATE OR REPLACE),
@@ -297,10 +300,12 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     ops.extend(drop_fks);
     ops.extend(drop_indexes);
     ops.extend(drop_functions);
-    ops.extend(create_functions);
     ops.extend(create_tables);
     ops.extend(column_ops);
     ops.extend(add_fks);
+    // Funciones tras las tablas (pueden referenciarlas) y antes de índices y
+    // triggers (que pueden usarlas, p. ej. índices por expresión funcional).
+    ops.extend(create_functions);
     ops.extend(create_indexes);
     ops.extend(create_triggers);
     ops.extend(rebuilds);
@@ -389,6 +394,16 @@ fn requires_vector_extension(model: &DatabaseModel) -> bool {
             .iter()
             .any(|i| matches!(i.method.as_deref(), Some("hnsw") | Some("ivfflat")))
     })
+}
+
+/// Conjunto de extensiones que el modelo necesita: las declaradas explícitamente
+/// (leídas de la BD) más `vector` si se infiere por uso de tipos/índices.
+fn wanted_extensions(model: &DatabaseModel) -> std::collections::BTreeSet<String> {
+    let mut set: std::collections::BTreeSet<String> = model.extensions.iter().cloned().collect();
+    if requires_vector_extension(model) {
+        set.insert("vector".to_string());
+    }
+    set
 }
 
 fn diff_columns(old_t: &Table, new_t: &Table, ops: &mut Vec<Operation>) {
@@ -583,9 +598,11 @@ pub fn apply_operation(model: &mut DatabaseModel, op: &Operation) {
                 t.indexes.retain(|i| &i.name != name);
             }
         }
-        // No altera el IR (no se modela la lista de extensiones); el diff la
-        // recalcula de forma determinista a partir del uso de tipos/índices.
-        Operation::EnsureExtension { .. } => {}
+        Operation::EnsureExtension { name } => {
+            if !model.extensions.contains(name) {
+                model.extensions.push(name.clone());
+            }
+        }
         Operation::CreateFunction { function } => {
             match model
                 .functions

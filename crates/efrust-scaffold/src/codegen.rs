@@ -548,6 +548,7 @@ fn db_objects_sql(model: &DatabaseModel, provider: Provider) -> Option<String> {
         && raw_indexes.is_empty()
         && !has_triggers
         && model.raw_objects.is_empty()
+        && model.extensions.is_empty()
     {
         return None;
     }
@@ -563,6 +564,13 @@ fn db_objects_sql(model: &DatabaseModel, provider: Provider) -> Option<String> {
         s,
         "-- (p. ej. con migrationBuilder.Sql(...) en una migración)."
     );
+
+    if !model.extensions.is_empty() {
+        let _ = writeln!(s, "\n-- Extensiones");
+        for ext in &model.extensions {
+            let _ = writeln!(s, "CREATE EXTENSION IF NOT EXISTS \"{ext}\";");
+        }
+    }
 
     if !model.functions.is_empty() {
         let _ = writeln!(s, "\n-- Funciones");
