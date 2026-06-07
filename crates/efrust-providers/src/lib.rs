@@ -120,6 +120,7 @@ mod tests {
             }),
             foreign_keys: vec![],
             indexes: vec![],
+            triggers: vec![],
         }
     }
 
@@ -186,6 +187,9 @@ mod tests {
                 columns: vec!["CustomerId".into()],
                 is_unique: true,
                 filter: None,
+                method: None,
+                operators: vec![],
+                expression: None,
             },
         }
     }
@@ -200,6 +204,103 @@ mod tests {
         ));
         let ix = gen.emit(&index_op()).unwrap().join("\n");
         assert!(ix.contains("CREATE UNIQUE INDEX \"IX_Order_CustomerId\" ON \"Order\" (\"CustomerId\");"));
+    }
+
+    #[test]
+    fn postgres_indice_vectorial_hnsw_con_operator_class() {
+        use efrust_core::model::Index;
+        let op = Operation::CreateIndex {
+            schema: None,
+            table: "documents".into(),
+            index: Index {
+                name: "ix_docs_embedding".into(),
+                columns: vec!["embedding".into()],
+                is_unique: false,
+                filter: None,
+                method: Some("hnsw".into()),
+                operators: vec!["vector_cosine_ops".into()],
+                expression: None,
+            },
+        };
+        let sql = PostgresGenerator::new().emit(&op).unwrap().join("\n");
+        assert!(sql.contains(
+            "CREATE INDEX \"ix_docs_embedding\" ON \"documents\" USING hnsw (\"embedding\" vector_cosine_ops);"
+        ), "got: {sql}");
+    }
+
+    #[test]
+    fn postgres_indice_gin_por_expresion() {
+        use efrust_core::model::Index;
+        let op = Operation::CreateIndex {
+            schema: None,
+            table: "documents".into(),
+            index: Index {
+                name: "ix_docs_fts".into(),
+                columns: vec![],
+                is_unique: false,
+                filter: None,
+                method: Some("gin".into()),
+                operators: vec![],
+                expression: Some("to_tsvector('english'::regconfig, body)".into()),
+            },
+        };
+        let sql = PostgresGenerator::new().emit(&op).unwrap().join("\n");
+        assert!(sql.contains(
+            "CREATE INDEX \"ix_docs_fts\" ON \"documents\" USING gin (to_tsvector('english'::regconfig, body));"
+        ), "got: {sql}");
+    }
+
+    #[test]
+    fn postgres_funcion_y_trigger_emiten_definition_crudo() {
+        use efrust_core::model::{DbFunction, Trigger, TriggerEvent, TriggerTiming};
+        let gen = PostgresGenerator::new();
+        let f = gen
+            .emit(&Operation::CreateFunction {
+                function: DbFunction {
+                    name: "normalize_body".into(),
+                    schema: Some("public".into()),
+                    definition: "CREATE FUNCTION normalize_body() RETURNS trigger AS $$ BEGIN RETURN NEW; END $$ LANGUAGE plpgsql".into(),
+                },
+            })
+            .unwrap()
+            .join("\n");
+        assert!(f.contains("CREATE FUNCTION normalize_body()"));
+
+        let t = gen
+            .emit(&Operation::CreateTrigger {
+                schema: None,
+                table: "documents".into(),
+                trigger: Trigger {
+                    name: "trg_norm".into(),
+                    table: "documents".into(),
+                    schema: None,
+                    timing: TriggerTiming::Before,
+                    events: vec![TriggerEvent::Insert],
+                    function: Some("normalize_body".into()),
+                    definition: "CREATE TRIGGER trg_norm BEFORE INSERT ON documents FOR EACH ROW EXECUTE FUNCTION normalize_body()".into(),
+                },
+            })
+            .unwrap()
+            .join("\n");
+        assert!(t.contains("CREATE TRIGGER trg_norm BEFORE INSERT ON documents"));
+
+        let drop = gen
+            .emit(&Operation::DropTrigger { schema: None, table: "documents".into(), name: "trg_norm".into() })
+            .unwrap()
+            .join("\n");
+        assert!(drop.contains("DROP TRIGGER IF EXISTS \"trg_norm\" ON \"documents\";"));
+    }
+
+    #[test]
+    fn sqlite_omite_funciones_y_triggers() {
+        use efrust_core::model::DbFunction;
+        let gen = SqliteGenerator::new();
+        let out = gen
+            .emit(&Operation::CreateFunction {
+                function: DbFunction { name: "f".into(), schema: None, definition: "...".into() },
+            })
+            .unwrap();
+        assert!(out.is_empty(), "SQLite omite funciones con aviso");
     }
 
     #[test]

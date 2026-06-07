@@ -47,6 +47,24 @@ pub trait SqlGenerator {
     /// Traduce una única operación a una o más sentencias SQL.
     fn emit(&self, op: &Operation) -> Result<Vec<String>, ProviderError>;
 
+    /// Warn-skip para objetos de BD no modelables (funciones/triggers) en motores
+    /// que aún no los soportan. Devuelve SQL vacío con un aviso, igual que el
+    /// manejo de FKs en SQLite. Postgres los implementa de verdad.
+    fn skip_db_object(&self, op: &Operation) -> Vec<String> {
+        let (kind, name) = match op {
+            Operation::CreateFunction { function } => ("CREATE FUNCTION", function.name.as_str()),
+            Operation::DropFunction { name, .. } => ("DROP FUNCTION", name.as_str()),
+            Operation::CreateTrigger { trigger, .. } => ("CREATE TRIGGER", trigger.name.as_str()),
+            Operation::DropTrigger { name, .. } => ("DROP TRIGGER", name.as_str()),
+            _ => ("operación", ""),
+        };
+        tracing::warn!(
+            "el provider '{}' no soporta {kind}; se omite '{name}'",
+            self.name()
+        );
+        Vec::new()
+    }
+
     /// Traduce una lista de operaciones (atajo conveniente).
     fn emit_all(&self, ops: &[Operation]) -> Result<Vec<String>, ProviderError> {
         let mut out = Vec::new();

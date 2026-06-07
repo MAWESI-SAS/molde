@@ -21,6 +21,9 @@ pub fn clr_to_csharp(clr: &str) -> (&'static str, bool) {
         "System.Guid" => ("Guid", false),
         "System.String" => ("string", true),
         "System.Byte[]" => ("byte[]", true),
+        // Tipos nativos Npgsql/pgvector (el CLR ya viene cualificado).
+        "NpgsqlTypes.NpgsqlTsVector" => ("NpgsqlTypes.NpgsqlTsVector", true),
+        "Pgvector.Vector" => ("Pgvector.Vector", true),
         _ => ("object", true),
     }
 }

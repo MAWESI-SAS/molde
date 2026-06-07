@@ -28,10 +28,18 @@ efrust (CLI, Rust)
 | `database update` (apply) | ✅ | ✅ | ✅ | ✅ (tiberius) |
 | `migrations add/remove/list` | ✅ | ✅ | ✅ | ✅ |
 | `scaffold` (BD → C#) | ✅ | ✅ | ✅ | ✅ (tiberius) |
+| Búsqueda vectorial / full-text (pgvector, tsvector, triggers) | ✅ | — | — | — |
 | Paridad verificada con `dotnet ef` | ✅ | — | — | — |
 
 > SQLite: las FKs se declaran inline en `CREATE TABLE` (no soporta `ALTER ADD FK`).
 > SQL Server usa el driver TDS `tiberius`; el resto usa `sqlx` (`Any`).
+> **PostgreSQL — objetos de búsqueda:** el scaffold detecta y preserva columnas
+> `vector(N)` (pgvector → `Pgvector.Vector`) y `tsvector` (→ `NpgsqlTsVector`,
+> incl. columnas generadas `STORED`), índices con método/operator class
+> (`HasMethod`/`HasOperators`: GIN, GiST, HNSW, IVFFlat) e índices parciales.
+> Lo que EF Core no modela (funciones, triggers e índices por expresión) se
+> exporta a `<Context>.DbObjects.sql` y se recrea en `database update`
+> (round-trip completo verificado contra Postgres + pgvector).
 
 La **única** pieza no-Rust es el sidecar .NET, y solo para *leer* el modelo:
 deja que EF Core resuelva Fluent API + data annotations + convenciones, y emite
@@ -55,6 +63,7 @@ Ver [`docs/model-ir.md`](docs/model-ir.md) para el contrato central.
 | **6** | Suite de paridad contra `dotnet ef` | ✅ **esquemas idénticos** |
 | **7** | Apply de **SQL Server** vía `tiberius` (driver TDS) | ✅ verificado vs SQL Server real |
 | **8** | **Scaffold de SQL Server** vía `tiberius` (cierra la matriz) | ✅ verificado vs SQL Server real |
+| **9** | **Búsqueda en PostgreSQL**: pgvector + full-text (tsvector) + triggers/funciones en scaffold y round-trip | ✅ verificado vs Postgres + pgvector |
 
 > **Notas Fase 5c:**
 > - **Normalización de nombres**: el scaffold convierte `snake_case` → `PascalCase`

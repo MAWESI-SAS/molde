@@ -282,6 +282,7 @@ mod tests {
             primary_key: Some(PrimaryKey { name: "PK_Customer".into(), columns: vec!["Id".into()] }),
             foreign_keys: vec![],
             indexes: vec![],
+            triggers: vec![],
         };
         Migration::new(
             "20260607120000_InitialCreate",

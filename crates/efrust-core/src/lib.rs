@@ -17,6 +17,6 @@ pub mod snapshot;
 pub use diff::{apply_operation, diff, Operation};
 pub use migration::{rebuild_model, Migration, MIGRATION_FORMAT_VERSION};
 pub use model::{
-    Column, DatabaseModel, ForeignKey, Index, PrimaryKey, ReferentialAction, Table,
-    IR_FORMAT_VERSION,
+    Column, DatabaseModel, DbFunction, ForeignKey, Index, PrimaryKey, ReferentialAction, Table,
+    Trigger, TriggerEvent, TriggerTiming, IR_FORMAT_VERSION,
 };

@@ -17,3 +17,9 @@ tokio = { workspace = true, features = ["net", "sync"] }
 # SQL Server (TDS) para lectura de esquema.
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
 tokio-util = { version = "0.7", features = ["compat"] }
+
+[dev-dependencies]
+efrust-core = { workspace = true }
+efrust-providers = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true, features = ["net", "sync", "rt", "macros", "rt-multi-thread"] }

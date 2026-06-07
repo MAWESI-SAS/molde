@@ -30,6 +30,10 @@ pub struct DatabaseModel {
     pub default_schema: Option<String>,
     /// Tablas del modelo, ordenadas de forma estable por (schema, name).
     pub tables: Vec<Table>,
+    /// Funciones a nivel de esquema (p. ej. funciones de trigger en Postgres).
+    /// Objetos que EF no modela; se preservan como SQL crudo (`definition`).
+    #[serde(default)]
+    pub functions: Vec<DbFunction>,
 }
 
 impl DatabaseModel {
@@ -40,6 +44,7 @@ impl DatabaseModel {
             product_version: None,
             default_schema: None,
             tables: Vec::new(),
+            functions: Vec::new(),
         }
     }
 
@@ -61,7 +66,11 @@ impl DatabaseModel {
             t.columns.sort_by(|a, b| a.name.cmp(&b.name));
             t.foreign_keys.sort_by(|a, b| a.name.cmp(&b.name));
             t.indexes.sort_by(|a, b| a.name.cmp(&b.name));
+            t.triggers.sort_by(|a, b| a.name.cmp(&b.name));
         }
+        self.functions.sort_by(|a, b| {
+            (a.schema.as_deref(), a.name.as_str()).cmp(&(b.schema.as_deref(), b.name.as_str()))
+        });
     }
 }
 
@@ -87,6 +96,10 @@ pub struct Table {
     pub foreign_keys: Vec<ForeignKey>,
     #[serde(default)]
     pub indexes: Vec<Index>,
+    /// Triggers asociados a la tabla. EF no los modela; se preservan como SQL
+    /// crudo (`Trigger::definition`) para round-trip fiel.
+    #[serde(default)]
+    pub triggers: Vec<Trigger>,
 }
 
 impl Table {
@@ -185,4 +198,66 @@ pub struct Index {
     /// Filtro parcial (p. ej. `[Deleted] = 0`), si el proveedor lo soporta.
     #[serde(default)]
     pub filter: Option<String>,
+    /// Método de acceso del índice (p. ej. `gin`, `gist`, `hnsw`, `ivfflat`).
+    /// `None` = método por defecto del motor (`btree` en Postgres).
+    #[serde(default)]
+    pub method: Option<String>,
+    /// Operator class por columna (p. ej. `vector_cosine_ops`, `gin_trgm_ops`).
+    /// Vacío = operadores por defecto del tipo. Usado por pgvector / GIN.
+    #[serde(default)]
+    pub operators: Vec<String>,
+    /// Índice por expresión (p. ej. `to_tsvector('english', body)`). Cuando está
+    /// presente manda sobre `columns` para el DDL (full-text / índices funcionales).
+    #[serde(default)]
+    pub expression: Option<String>,
+}
+
+/// Momento de disparo de un trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TriggerTiming {
+    Before,
+    After,
+    InsteadOf,
+}
+
+/// Evento que dispara un trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TriggerEvent {
+    Insert,
+    Update,
+    Delete,
+    Truncate,
+}
+
+/// Un trigger de tabla. EF Core no lo modela; se conserva el `definition` crudo
+/// (`CREATE TRIGGER ...`) como fuente de verdad para recrearlo, y los campos
+/// estructurados sirven para diagnóstico y ordenación.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Trigger {
+    pub name: String,
+    /// Tabla a la que está asociado.
+    pub table: String,
+    #[serde(default)]
+    pub schema: Option<String>,
+    pub timing: TriggerTiming,
+    /// Eventos que lo disparan (uno o varios).
+    pub events: Vec<TriggerEvent>,
+    /// Nombre cualificado de la función que ejecuta (informativo).
+    #[serde(default)]
+    pub function: Option<String>,
+    /// DDL crudo `CREATE TRIGGER ...` tal como lo devuelve el motor.
+    pub definition: String,
+}
+
+/// Una función de esquema (p. ej. función de trigger en Postgres). EF no la
+/// modela; se conserva el `definition` crudo (`CREATE FUNCTION ...`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DbFunction {
+    pub name: String,
+    #[serde(default)]
+    pub schema: Option<String>,
+    /// DDL crudo `CREATE [OR REPLACE] FUNCTION ...` tal como lo devuelve el motor.
+    pub definition: String,
 }

@@ -44,11 +44,18 @@ impl PostgresGenerator {
         if let Some(coll) = &column.collation {
             parts.push(format!("COLLATE {}", self.quote_ident(coll)));
         }
+        // Columna computada/generada (p. ej. tsvector STORED). Excluye default.
+        if let Some(expr) = &column.computed_sql {
+            let kind = if column.computed_stored { " STORED" } else { "" };
+            parts.push(format!("GENERATED ALWAYS AS ({expr}){kind}"));
+        }
         if !column.is_nullable {
             parts.push("NOT NULL".into());
         }
-        if let Some(def) = &column.default_value_sql {
-            parts.push(format!("DEFAULT {def}"));
+        if column.computed_sql.is_none() {
+            if let Some(def) = &column.default_value_sql {
+                parts.push(format!("DEFAULT {def}"));
+            }
         }
         Ok(parts.join(" "))
     }
@@ -163,6 +170,18 @@ impl SqlGenerator for PostgresGenerator {
                 // En Postgres los índices viven en el esquema de su tabla.
                 vec![format!("DROP INDEX {};", self.qualified(schema.as_deref(), name))]
             }
+            // Funciones y triggers se preservan como SQL crudo (no modelables por
+            // EF). La definición ya es DDL Postgres válido (pg_get_*def).
+            Operation::CreateFunction { function } => vec![function.definition.clone()],
+            Operation::DropFunction { schema, name } => {
+                vec![format!("DROP FUNCTION IF EXISTS {};", self.qualified(schema.as_deref(), name))]
+            }
+            Operation::CreateTrigger { trigger, .. } => vec![trigger.definition.clone()],
+            Operation::DropTrigger { schema, table, name } => vec![format!(
+                "DROP TRIGGER IF EXISTS {} ON {};",
+                self.quote_ident(name),
+                self.qualified(schema.as_deref(), table)
+            )],
         };
         Ok(sql)
     }
@@ -189,17 +208,43 @@ impl PostgresGenerator {
 
     fn create_index(&self, schema: Option<&str>, table: &str, index: &Index) -> String {
         let unique = if index.is_unique { "UNIQUE " } else { "" };
-        let cols: Vec<String> = index.columns.iter().map(|c| self.quote_ident(c)).collect();
+        // Método de acceso (gin/gist/hnsw/ivfflat). Vacío = btree por defecto.
+        let using = index
+            .method
+            .as_deref()
+            .filter(|m| !m.is_empty())
+            .map(|m| format!(" USING {m}"))
+            .unwrap_or_default();
+        // Operator class opcional por clave (pgvector: vector_cosine_ops, etc.).
+        let op_for = |i: usize| -> String {
+            index
+                .operators
+                .get(i)
+                .filter(|o| !o.is_empty())
+                .map(|o| format!(" {o}"))
+                .unwrap_or_default()
+        };
+        // Índice por expresión (full-text/funcional) vs por columnas.
+        let key = if let Some(expr) = &index.expression {
+            format!("({}{})", expr, op_for(0))
+        } else {
+            let parts: Vec<String> = index
+                .columns
+                .iter()
+                .enumerate()
+                .map(|(i, c)| format!("{}{}", self.quote_ident(c), op_for(i)))
+                .collect();
+            format!("({})", parts.join(", "))
+        };
         let filter = index
             .filter
             .as_ref()
             .map(|f| format!(" WHERE {f}"))
             .unwrap_or_default();
         format!(
-            "CREATE {unique}INDEX {} ON {} ({}){filter};",
+            "CREATE {unique}INDEX {} ON {}{using} {key}{filter};",
             self.quote_ident(&index.name),
             self.qualified(schema, table),
-            cols.join(", "),
         )
     }
 }

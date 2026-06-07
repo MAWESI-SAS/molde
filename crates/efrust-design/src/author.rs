@@ -131,6 +131,7 @@ mod tests {
             }),
             foreign_keys: vec![],
             indexes: vec![],
+            triggers: vec![],
         });
         m
     }

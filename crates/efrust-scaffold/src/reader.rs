@@ -97,6 +97,7 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
         primary_key: None,
         foreign_keys: Vec::new(),
         indexes: Vec::new(),
+        triggers: Vec::new(),
     };
 
     // Columnas (PRAGMA table_info: cid, name, type, notnull, dflt_value, pk).
@@ -216,6 +217,9 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
             columns,
             is_unique: unique == 1,
             filter: None,
+            method: None,
+            operators: Vec::new(),
+            expression: None,
         });
     }
 
@@ -282,22 +286,32 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
                 primary_key: None,
                 foreign_keys: Vec::new(),
                 indexes: Vec::new(),
+                triggers: Vec::new(),
             },
         );
     }
 
-    // Columnas (todas de una vez, agrupadas por tabla).
+    // Columnas (todas de una vez, agrupadas por tabla). Se une a pg_attribute
+    // para obtener `format_type` (tipo exacto, p. ej. `vector(384)`) y se leen
+    // las columnas generadas (`GENERATED ALWAYS AS ... STORED`, p. ej. tsvector).
     let col_rows = sqlx::query(&format!(
-        "SELECT table_name::text AS table_name, column_name::text AS column_name, \
-                data_type::text AS data_type, udt_name::text AS udt_name, \
-                is_nullable::text AS is_nullable, \
-                character_maximum_length::int AS character_maximum_length, \
-                numeric_precision::int AS numeric_precision, \
-                numeric_scale::int AS numeric_scale, \
-                column_default::text AS column_default, \
-                is_identity::text AS is_identity \
-         FROM information_schema.columns WHERE table_schema = '{sc}' \
-         ORDER BY table_name, ordinal_position"
+        "SELECT c.table_name::text AS table_name, c.column_name::text AS column_name, \
+                c.data_type::text AS data_type, c.udt_name::text AS udt_name, \
+                c.is_nullable::text AS is_nullable, \
+                c.character_maximum_length::int AS character_maximum_length, \
+                c.numeric_precision::int AS numeric_precision, \
+                c.numeric_scale::int AS numeric_scale, \
+                c.column_default::text AS column_default, \
+                c.is_identity::text AS is_identity, \
+                c.is_generated::text AS is_generated, \
+                c.generation_expression::text AS generation_expression, \
+                format_type(a.atttypid, a.atttypmod)::text AS full_type \
+         FROM information_schema.columns c \
+         JOIN pg_namespace n ON n.nspname = c.table_schema \
+         JOIN pg_class cl ON cl.relname = c.table_name AND cl.relnamespace = n.oid \
+         JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attname = c.column_name \
+         WHERE c.table_schema = '{sc}' AND a.attnum > 0 AND NOT a.attisdropped \
+         ORDER BY c.table_name, c.ordinal_position"
     ))
     .fetch_all(pool)
     .await?;
@@ -309,12 +323,16 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         };
         let data_type: String = r.try_get("data_type")?;
         let udt_name: String = r.try_get("udt_name").unwrap_or_default();
+        let full_type: String = r.try_get("full_type").unwrap_or_default();
         let is_nullable: String = r.try_get("is_nullable")?;
         let max_length: Option<i32> = r.try_get("character_maximum_length").ok().flatten();
         let precision: Option<i32> = r.try_get("numeric_precision").ok().flatten();
         let scale: Option<i32> = r.try_get("numeric_scale").ok().flatten();
         let default: Option<String> = r.try_get("column_default")?;
         let is_identity: String = r.try_get("is_identity").unwrap_or_default();
+        let is_generated: String = r.try_get("is_generated").unwrap_or_default();
+        let generation_expression: Option<String> =
+            r.try_get("generation_expression").ok().flatten();
 
         let identity = is_identity.eq_ignore_ascii_case("YES")
             || default
@@ -322,9 +340,20 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
                 .map(|d| d.contains("nextval("))
                 .unwrap_or(false);
 
+        // Columna generada (STORED): se preserva la expresión para round-trip.
+        let computed = is_generated.eq_ignore_ascii_case("ALWAYS");
+        let computed_sql = if computed { generation_expression } else { None };
+
+        // pgvector pierde la dimensión vía information_schema; usar format_type.
+        let store_type = if udt_name == "vector" {
+            full_type.clone()
+        } else {
+            pg_store_type(&data_type, &udt_name, max_length)
+        };
+
         table.columns.push(Column {
             name: r.try_get("column_name")?,
-            store_type: Some(pg_store_type(&data_type, &udt_name, max_length)),
+            store_type: Some(store_type),
             clr_type: Some(pg_clr(&data_type, &udt_name).to_string()),
             is_nullable: is_nullable.eq_ignore_ascii_case("YES"),
             is_identity: identity,
@@ -332,9 +361,9 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
             precision,
             scale,
             // Los defaults de identidad/serial no se reproducen como literal.
-            default_value_sql: if identity { None } else { default },
-            computed_sql: None,
-            computed_stored: false,
+            default_value_sql: if identity || computed { None } else { default },
+            computed_sql,
+            computed_stored: computed,
             collation: None,
             comment: None,
         });
@@ -417,8 +446,237 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         }
     }
 
+    // Índices (incluye GIN/GiST/HNSW/IVFFlat y por expresión). Se excluyen los
+    // que respaldan la PK o una constraint (representados por separado).
+    let idx_rows = sqlx::query(&format!(
+        "SELECT t.relname::text AS table_name, ic.relname::text AS index_name, \
+                ix.indisunique::int AS is_unique, am.amname::text AS method, \
+                (ix.indexprs IS NOT NULL)::int AS has_expr, \
+                COALESCE(pg_get_expr(ix.indpred, ix.indrelid), '')::text AS filter, \
+                pg_get_indexdef(ix.indexrelid)::text AS indexdef \
+         FROM pg_index ix \
+         JOIN pg_class ic ON ic.oid = ix.indexrelid \
+         JOIN pg_class t ON t.oid = ix.indrelid \
+         JOIN pg_namespace n ON n.oid = t.relnamespace \
+         JOIN pg_am am ON am.oid = ic.relam \
+         WHERE n.nspname = '{sc}' AND NOT ix.indisprimary \
+           AND NOT EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid = ix.indexrelid) \
+         ORDER BY t.relname, ic.relname"
+    ))
+    .fetch_all(pool)
+    .await?;
+
+    for r in idx_rows {
+        let table_name: String = r.try_get("table_name")?;
+        let Some(table) = tables.get_mut(&table_name) else {
+            continue;
+        };
+        let amname: String = r.try_get("method").unwrap_or_default();
+        let is_unique: i32 = r.try_get("is_unique").unwrap_or(0);
+        let has_expr: i32 = r.try_get("has_expr").unwrap_or(0);
+        let filter: String = r.try_get("filter").unwrap_or_default();
+        let indexdef: String = r.try_get("indexdef").unwrap_or_default();
+
+        let (columns, operators, expression) = parse_pg_index_keys(&indexdef, has_expr != 0);
+        // btree es el método por defecto: no se anota para mantener el modelo limpio.
+        let method = if amname.eq_ignore_ascii_case("btree") {
+            None
+        } else {
+            Some(amname)
+        };
+        table.indexes.push(Index {
+            name: r.try_get("index_name")?,
+            columns,
+            is_unique: is_unique != 0,
+            filter: if filter.is_empty() { None } else { Some(filter) },
+            method,
+            operators,
+            expression,
+        });
+    }
+
+    // Triggers + funciones de trigger. EF no las modela; se preservan crudas.
+    let mut functions: BTreeMap<(Option<String>, String), efrust_core::model::DbFunction> =
+        BTreeMap::new();
+    let trg_rows = sqlx::query(&format!(
+        "SELECT t.relname::text AS table_name, tg.tgname::text AS trigger_name, \
+                tg.tgtype::int AS tgtype, pg_get_triggerdef(tg.oid)::text AS def, \
+                p.proname::text AS func_name, fn.nspname::text AS func_schema, \
+                pg_get_functiondef(p.oid)::text AS func_def, \
+                EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')::int AS func_is_ext \
+         FROM pg_trigger tg \
+         JOIN pg_class t ON t.oid = tg.tgrelid \
+         JOIN pg_namespace n ON n.oid = t.relnamespace \
+         JOIN pg_proc p ON p.oid = tg.tgfoid \
+         JOIN pg_namespace fn ON fn.oid = p.pronamespace \
+         WHERE n.nspname = '{sc}' AND NOT tg.tgisinternal \
+         ORDER BY t.relname, tg.tgname"
+    ))
+    .fetch_all(pool)
+    .await?;
+
+    for r in trg_rows {
+        let table_name: String = r.try_get("table_name")?;
+        let Some(table) = tables.get_mut(&table_name) else {
+            continue;
+        };
+        let tgtype: i32 = r.try_get("tgtype").unwrap_or(0);
+        let def: String = r.try_get("def").unwrap_or_default();
+        let func_name: String = r.try_get("func_name").unwrap_or_default();
+        let func_schema: String = r.try_get("func_schema").unwrap_or_default();
+        let func_def: Option<String> = r.try_get("func_def").ok().flatten();
+        let func_is_ext: i32 = r.try_get("func_is_ext").unwrap_or(0);
+
+        let (timing, events) = parse_pg_trigger_type(tgtype);
+        let func_qualified = format!("{func_schema}.{func_name}");
+        table.triggers.push(efrust_core::model::Trigger {
+            name: r.try_get("trigger_name")?,
+            table: table_name.clone(),
+            schema: Some(schema.to_string()),
+            timing,
+            events,
+            function: Some(func_qualified),
+            definition: def,
+        });
+
+        // Funciones de usuario referenciadas (no de extensiones ni del catálogo).
+        if func_is_ext == 0
+            && func_schema != "pg_catalog"
+            && func_schema != "information_schema"
+        {
+            if let Some(fd) = func_def {
+                functions
+                    .entry((Some(func_schema.clone()), func_name.clone()))
+                    .or_insert_with(|| efrust_core::model::DbFunction {
+                        name: func_name.clone(),
+                        schema: Some(func_schema.clone()),
+                        definition: fd,
+                    });
+            }
+        }
+    }
+
     model.tables = tables.into_values().collect();
+    model.functions = functions.into_values().collect();
     Ok(model)
+}
+
+/// Extrae (columnas, operator-classes, expresión) del `CREATE INDEX` textual que
+/// devuelve `pg_get_indexdef`. Para índices por expresión devuelve la expresión
+/// cruda y deja las columnas vacías.
+fn parse_pg_index_keys(indexdef: &str, has_expr: bool) -> (Vec<String>, Vec<String>, Option<String>) {
+    // La lista de claves es el contenido entre el primer '(' tras `USING ...` y
+    // su ')' balanceado.
+    let Some(open) = indexdef.find('(') else {
+        return (Vec::new(), Vec::new(), None);
+    };
+    let bytes = indexdef.as_bytes();
+    let mut depth = 0i32;
+    let mut close = open;
+    for (i, &b) in bytes.iter().enumerate().skip(open) {
+        match b {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let keylist = &indexdef[open + 1..close];
+
+    if has_expr {
+        // Índice funcional/FTS: se conserva la expresión completa cruda.
+        return (Vec::new(), Vec::new(), Some(keylist.trim().to_string()));
+    }
+
+    // Índice por columnas: separar por comas de nivel superior; cada parte es
+    // `"col"` o `col` con opcional operator class detrás.
+    let mut columns = Vec::new();
+    let mut operators = Vec::new();
+    let mut any_op = false;
+    for part in split_top_level(keylist) {
+        let part = part.trim();
+        let (col, op) = split_index_key_part(part);
+        columns.push(col);
+        if op.is_empty() {
+            operators.push(String::new());
+        } else {
+            operators.push(op);
+            any_op = true;
+        }
+    }
+    let operators = if any_op { operators } else { Vec::new() };
+    (columns, operators, None)
+}
+
+/// Separa una clave de índice en (columna, operator-class). La columna puede ir
+/// citada con comillas dobles; el operator class es el primer token posterior.
+fn split_index_key_part(part: &str) -> (String, String) {
+    let part = part.trim();
+    if let Some(rest) = part.strip_prefix('"') {
+        if let Some(end) = rest.find('"') {
+            let col = rest[..end].to_string();
+            let tail = rest[end + 1..].trim();
+            let op = tail.split_whitespace().next().unwrap_or("").to_string();
+            return (col, op);
+        }
+    }
+    let mut it = part.split_whitespace();
+    let col = it.next().unwrap_or("").to_string();
+    let op = it.next().unwrap_or("").to_string();
+    (col, op)
+}
+
+/// Separa por comas de nivel superior (ignora comas dentro de paréntesis).
+fn split_top_level(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(s[start..i].to_string());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(s[start..].to_string());
+    out
+}
+
+/// Decodifica los flags `pg_trigger.tgtype` a (timing, eventos).
+fn parse_pg_trigger_type(
+    tgtype: i32,
+) -> (efrust_core::model::TriggerTiming, Vec<efrust_core::model::TriggerEvent>) {
+    use efrust_core::model::{TriggerEvent, TriggerTiming};
+    let timing = if tgtype & (1 << 1) != 0 {
+        TriggerTiming::Before
+    } else if tgtype & (1 << 6) != 0 {
+        TriggerTiming::InsteadOf
+    } else {
+        TriggerTiming::After
+    };
+    let mut events = Vec::new();
+    if tgtype & (1 << 2) != 0 {
+        events.push(TriggerEvent::Insert);
+    }
+    if tgtype & (1 << 3) != 0 {
+        events.push(TriggerEvent::Delete);
+    }
+    if tgtype & (1 << 4) != 0 {
+        events.push(TriggerEvent::Update);
+    }
+    if tgtype & (1 << 5) != 0 {
+        events.push(TriggerEvent::Truncate);
+    }
+    (timing, events)
 }
 
 fn pg_clr(data_type: &str, udt: &str) -> &'static str {
@@ -434,6 +692,8 @@ fn pg_clr(data_type: &str, udt: &str) -> &'static str {
         "date" | "timestamp without time zone" | "timestamp" => "System.DateTime",
         "timestamp with time zone" => "System.DateTimeOffset",
         "bytea" => "System.Byte[]",
+        // Full-text search: tsvector → tipo nativo Npgsql.
+        "tsvector" => "NpgsqlTypes.NpgsqlTsVector",
         "character varying" | "varchar" | "character" | "char" | "text" | "citext" => {
             "System.String"
         }
@@ -442,6 +702,9 @@ fn pg_clr(data_type: &str, udt: &str) -> &'static str {
             "int4" => "System.Int32",
             "int8" => "System.Int64",
             "bool" => "System.Boolean",
+            "tsvector" => "NpgsqlTypes.NpgsqlTsVector",
+            // pgvector: columna vector(N) → tipo nativo Pgvector.Vector.
+            "vector" => "Pgvector.Vector",
             _ => "System.String",
         },
     }
@@ -521,6 +784,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
                 primary_key: None,
                 foreign_keys: Vec::new(),
                 indexes: Vec::new(),
+                triggers: Vec::new(),
             },
         );
     }
@@ -675,6 +939,9 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
                 columns: vec![column],
                 is_unique: non_unique == 0,
                 filter: None,
+                method: None,
+                operators: Vec::new(),
+                expression: None,
             }),
         }
     }
@@ -726,6 +993,7 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
                 primary_key: None,
                 foreign_keys: Vec::new(),
                 indexes: Vec::new(),
+                triggers: Vec::new(),
             },
         );
     }
@@ -891,6 +1159,9 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
                 columns: vec![column],
                 is_unique,
                 filter: None,
+                method: None,
+                operators: Vec::new(),
+                expression: None,
             }),
         }
     }

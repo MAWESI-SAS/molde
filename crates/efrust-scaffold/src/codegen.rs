@@ -35,7 +35,8 @@ pub struct GeneratedFile {
     pub contents: String,
 }
 
-/// Genera todos los archivos: una entidad por tabla + el DbContext.
+/// Genera todos los archivos: una entidad por tabla + el DbContext + (si aplica)
+/// un artefacto `.sql` con los objetos de BD no modelables por EF.
 pub fn generate(model: &DatabaseModel, opts: &CodegenOptions) -> Vec<GeneratedFile> {
     let mut files: Vec<GeneratedFile> = model
         .tables
@@ -46,10 +47,20 @@ pub fn generate(model: &DatabaseModel, opts: &CodegenOptions) -> Vec<GeneratedFi
         })
         .collect();
 
+    // Objetos no modelables por EF (funciones, triggers, índices por expresión).
+    let db_objects = db_objects_sql(model);
+
     files.push(GeneratedFile {
         relative_path: format!("{}.cs", opts.context_name),
-        contents: db_context(model, opts),
+        contents: db_context(model, opts, db_objects.is_some()),
     });
+
+    if let Some(sql) = db_objects {
+        files.push(GeneratedFile {
+            relative_path: format!("{}.DbObjects.sql", opts.context_name),
+            contents: sql,
+        });
+    }
 
     files
 }
@@ -113,7 +124,7 @@ fn entity_class(table: &Table, model: &DatabaseModel, opts: &CodegenOptions) -> 
     s
 }
 
-fn db_context(model: &DatabaseModel, opts: &CodegenOptions) -> String {
+fn db_context(model: &DatabaseModel, opts: &CodegenOptions, has_db_objects: bool) -> String {
     let ctx = &opts.context_name;
     let mut s = String::new();
     let _ = writeln!(s, "using System;");
@@ -152,6 +163,14 @@ fn db_context(model: &DatabaseModel, opts: &CodegenOptions) -> String {
         }
         write_entity_config(&mut s, table, model);
     }
+    if has_db_objects {
+        let _ = writeln!(s);
+        let _ = writeln!(s, "        // NOTA: esta base de datos contiene objetos que EF Core no modela");
+        let _ = writeln!(s, "        // (funciones, triggers e índices por expresión). Se exportaron a");
+        let _ = writeln!(s, "        // '{}.DbObjects.sql'; aplícalos fuera del modelo (p. ej. con", opts.context_name);
+        let _ = writeln!(s, "        // migrationBuilder.Sql(...) en una migración).");
+    }
+
     let _ = writeln!(s);
     let _ = writeln!(s, "        OnModelCreatingPartial(modelBuilder);");
     let _ = writeln!(s, "    }}");
@@ -181,14 +200,22 @@ fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel) {
         }
     }
 
-    // Propiedades: HasColumnName si el nombre C# difiere del de BD, + HasMaxLength.
+    // Propiedades: HasColumnName si el nombre C# difiere del de BD, + HasMaxLength
+    // + HasComputedColumnSql para columnas generadas (p. ej. tsvector STORED).
     for col in &table.columns {
         let pname = prop_name(&col.name);
         let mut chain = String::new();
         if pname != col.name {
             let _ = write!(chain, ".HasColumnName(\"{}\")", col.name);
         }
-        if let Some(n) = col.max_length {
+        if let Some(expr) = &col.computed_sql {
+            let _ = write!(
+                chain,
+                ".HasComputedColumnSql(\"{}\", stored: {})",
+                escape_cs(expr),
+                col.computed_stored
+            );
+        } else if let Some(n) = col.max_length {
             let _ = write!(chain, ".HasMaxLength({n})");
         }
         if !chain.is_empty() {
@@ -197,9 +224,32 @@ fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel) {
     }
 
     for idx in &table.indexes {
+        // Los índices por expresión no se pueden expresar con Fluent API; van al
+        // artefacto .sql.
+        if idx.expression.is_some() || idx.columns.is_empty() {
+            continue;
+        }
         let target = key_selector(&idx.columns);
-        let unique = if idx.is_unique { ".IsUnique()" } else { "" };
-        let _ = writeln!(s, "            entity.HasIndex({target}, \"{}\"){unique};", idx.name);
+        let mut chain = String::new();
+        if idx.is_unique {
+            chain.push_str(".IsUnique()");
+        }
+        if let Some(f) = &idx.filter {
+            let _ = write!(chain, ".HasFilter(\"{}\")", escape_cs(f));
+        }
+        if let Some(m) = &idx.method {
+            let _ = write!(chain, ".HasMethod(\"{m}\")");
+        }
+        if !idx.operators.is_empty() {
+            let ops = idx
+                .operators
+                .iter()
+                .map(|o| format!("\"{o}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = write!(chain, ".HasOperators({ops})");
+        }
+        let _ = writeln!(s, "            entity.HasIndex({target}, \"{}\"){chain};", idx.name);
     }
 
     // Relaciones (lado dependiente): HasOne / WithMany.
@@ -297,6 +347,76 @@ fn delete_behavior(action: ReferentialAction) -> Option<&'static str> {
     }
 }
 
+/// Escapa una cadena para incrustarla en un literal C# entre comillas dobles.
+fn escape_cs(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Genera el artefacto SQL con los objetos que EF no modela: funciones, índices
+/// por expresión (full-text/funcionales) y triggers. Devuelve `None` si no hay
+/// ninguno. La generación del `CREATE INDEX` se delega al provider de Postgres
+/// para que coincida exactamente con la que aplica `database update`.
+fn db_objects_sql(model: &DatabaseModel) -> Option<String> {
+    use efrust_core::diff::Operation;
+    use efrust_providers::{PostgresGenerator, SqlGenerator};
+
+    let expr_indexes: Vec<(&Table, &efrust_core::model::Index)> = model
+        .tables
+        .iter()
+        .flat_map(|t| {
+            t.indexes
+                .iter()
+                .filter(|i| i.expression.is_some())
+                .map(move |i| (t, i))
+        })
+        .collect();
+
+    let has_triggers = model.tables.iter().any(|t| !t.triggers.is_empty());
+    if model.functions.is_empty() && expr_indexes.is_empty() && !has_triggers {
+        return None;
+    }
+
+    let gen = PostgresGenerator::new();
+    let mut s = String::new();
+    let _ = writeln!(s, "-- Objetos de base de datos no modelables por EF Core.");
+    let _ = writeln!(s, "-- Generado por `efrust scaffold`. Aplicar fuera del modelo EF");
+    let _ = writeln!(s, "-- (p. ej. con migrationBuilder.Sql(...) en una migración).");
+
+    if !model.functions.is_empty() {
+        let _ = writeln!(s, "\n-- Funciones");
+        for f in &model.functions {
+            let _ = writeln!(s, "{};", f.definition.trim_end_matches(';'));
+        }
+    }
+
+    if !expr_indexes.is_empty() {
+        let _ = writeln!(s, "\n-- Índices (por expresión / full-text)");
+        for (t, idx) in &expr_indexes {
+            let op = Operation::CreateIndex {
+                schema: t.schema.clone(),
+                table: t.name.clone(),
+                index: (*idx).clone(),
+            };
+            if let Ok(stmts) = gen.emit(&op) {
+                for stmt in stmts {
+                    let _ = writeln!(s, "{stmt}");
+                }
+            }
+        }
+    }
+
+    if has_triggers {
+        let _ = writeln!(s, "\n-- Triggers");
+        for t in &model.tables {
+            for tg in &t.triggers {
+                let _ = writeln!(s, "{};", tg.definition.trim_end_matches(';'));
+            }
+        }
+    }
+
+    Some(s)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,6 +451,7 @@ mod tests {
             primary_key: Some(PrimaryKey { name: "PK_Customer".into(), columns: vec!["Id".into()] }),
             foreign_keys: vec![],
             indexes: vec![],
+            triggers: vec![],
         });
         m.tables.push(Table {
             name: "Order".into(),
@@ -347,7 +468,8 @@ mod tests {
                 principal_columns: vec!["Id".into()],
                 on_delete: ReferentialAction::Cascade,
             }],
-            indexes: vec![Index { name: "IX_Order_CustomerId".into(), columns: vec!["CustomerId".into()], is_unique: false, filter: None }],
+            indexes: vec![Index { name: "IX_Order_CustomerId".into(), columns: vec!["CustomerId".into()], is_unique: false, filter: None, method: None, operators: vec![], expression: None }],
+            triggers: vec![],
         });
         m
     }
@@ -380,6 +502,7 @@ mod tests {
             primary_key: Some(PrimaryKey { name: "pk_customer_order".into(), columns: vec!["id".into()] }),
             foreign_keys: vec![],
             indexes: vec![],
+            triggers: vec![],
         });
         let files = generate(&m, &CodegenOptions::default());
 
@@ -394,5 +517,114 @@ mod tests {
         assert!(ctx.contains("entity.HasKey(e => e.Id).HasName(\"pk_customer_order\");"));
         // La columna renombrada mapea de vuelta con HasColumnName.
         assert!(ctx.contains("entity.Property(e => e.CreatedAt).HasColumnName(\"created_at\");"));
+    }
+
+    fn search_model() -> DatabaseModel {
+        use efrust_core::model::{DbFunction, Index, Trigger, TriggerEvent, TriggerTiming};
+        let mut m = DatabaseModel::empty();
+        m.default_schema = Some("public".into());
+
+        let mut embedding = col("embedding", "Pgvector.Vector", false, None);
+        embedding.store_type = Some("vector(384)".into());
+        let mut search = col("search", "NpgsqlTypes.NpgsqlTsVector", false, None);
+        search.store_type = Some("tsvector".into());
+        search.computed_sql = Some("to_tsvector('english'::regconfig, body)".into());
+        search.computed_stored = true;
+
+        m.tables.push(Table {
+            name: "documents".into(),
+            schema: Some("public".into()),
+            clr_type: None,
+            comment: None,
+            columns: vec![
+                col("id", "System.Int32", false, None),
+                col("body", "System.String", true, None),
+                embedding,
+                search,
+            ],
+            primary_key: Some(PrimaryKey { name: "pk_documents".into(), columns: vec!["id".into()] }),
+            foreign_keys: vec![],
+            indexes: vec![
+                // Índice vectorial HNSW con operator class.
+                Index {
+                    name: "ix_documents_embedding".into(),
+                    columns: vec!["embedding".into()],
+                    is_unique: false,
+                    filter: None,
+                    method: Some("hnsw".into()),
+                    operators: vec!["vector_cosine_ops".into()],
+                    expression: None,
+                },
+                // Índice GIN por expresión (full-text).
+                Index {
+                    name: "ix_documents_fts".into(),
+                    columns: vec![],
+                    is_unique: false,
+                    filter: None,
+                    method: Some("gin".into()),
+                    operators: vec![],
+                    expression: Some("to_tsvector('english'::regconfig, body)".into()),
+                },
+            ],
+            triggers: vec![Trigger {
+                name: "trg_normalize".into(),
+                table: "documents".into(),
+                schema: Some("public".into()),
+                timing: TriggerTiming::Before,
+                events: vec![TriggerEvent::Insert],
+                function: Some("public.normalize_body".into()),
+                definition: "CREATE TRIGGER trg_normalize BEFORE INSERT ON public.documents FOR EACH ROW EXECUTE FUNCTION normalize_body()".into(),
+            }],
+        });
+        m.functions.push(DbFunction {
+            name: "normalize_body".into(),
+            schema: Some("public".into()),
+            definition: "CREATE OR REPLACE FUNCTION public.normalize_body() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.body := lower(NEW.body); RETURN NEW; END $$".into(),
+        });
+        m
+    }
+
+    #[test]
+    fn mapea_tipos_vector_y_tsvector() {
+        let files = generate(&search_model(), &CodegenOptions::default());
+        let doc = &files.iter().find(|f| f.relative_path == "Documents.cs").unwrap().contents;
+        assert!(doc.contains("public Pgvector.Vector Embedding { get; set; } = null!;"), "got: {doc}");
+        assert!(doc.contains("public NpgsqlTypes.NpgsqlTsVector Search { get; set; } = null!;"), "got: {doc}");
+    }
+
+    #[test]
+    fn columna_generada_emite_has_computed_column_sql() {
+        let files = generate(&search_model(), &CodegenOptions::default());
+        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
+        assert!(ctx.contains(
+            "entity.Property(e => e.Search).HasColumnName(\"search\").HasComputedColumnSql(\"to_tsvector('english'::regconfig, body)\", stored: true);"
+        ), "got: {ctx}");
+    }
+
+    #[test]
+    fn indice_vectorial_emite_metodo_y_operadores() {
+        let files = generate(&search_model(), &CodegenOptions::default());
+        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
+        assert!(ctx.contains(
+            "entity.HasIndex(e => e.Embedding, \"ix_documents_embedding\").HasMethod(\"hnsw\").HasOperators(\"vector_cosine_ops\");"
+        ), "got: {ctx}");
+        // El índice por expresión NO va al Fluent API.
+        assert!(!ctx.contains("ix_documents_fts"));
+    }
+
+    #[test]
+    fn artefacto_sql_contiene_funcion_indice_y_trigger() {
+        let files = generate(&search_model(), &CodegenOptions::default());
+        let sql = &files
+            .iter()
+            .find(|f| f.relative_path == "AppDbContext.DbObjects.sql")
+            .expect("debe existir el artefacto .sql")
+            .contents;
+        assert!(sql.contains("CREATE OR REPLACE FUNCTION public.normalize_body()"), "got: {sql}");
+        assert!(sql.contains("CREATE INDEX \"ix_documents_fts\" ON \"public\".\"documents\" USING gin (to_tsvector('english'::regconfig, body));"), "got: {sql}");
+        assert!(sql.contains("CREATE TRIGGER trg_normalize BEFORE INSERT ON public.documents"), "got: {sql}");
+        // El context referencia el artefacto.
+        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
+        assert!(ctx.contains("AppDbContext.DbObjects.sql"));
     }
 }
