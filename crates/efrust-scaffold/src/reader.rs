@@ -359,7 +359,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         let store_type = if udt_name == "vector" {
             full_type.clone()
         } else {
-            pg_store_type(&data_type, &udt_name, max_length)
+            pg_store_type(&data_type, &udt_name, max_length, precision, scale)
         };
 
         table.columns.push(Column {
@@ -728,12 +728,31 @@ fn pg_clr(data_type: &str, udt: &str) -> &'static str {
     }
 }
 
-fn pg_store_type(data_type: &str, udt: &str, max_length: Option<i32>) -> String {
-    match (data_type, max_length) {
-        ("character varying", Some(n)) => format!("character varying({n})"),
-        ("character", Some(n)) => format!("character({n})"),
-        ("USER-DEFINED", _) => udt.to_string(),
-        (other, _) => other.to_string(),
+fn pg_store_type(
+    data_type: &str,
+    udt: &str,
+    max_length: Option<i32>,
+    precision: Option<i32>,
+    scale: Option<i32>,
+) -> String {
+    match data_type {
+        "character varying" => match max_length {
+            Some(n) => format!("character varying({n})"),
+            None => "character varying".to_string(),
+        },
+        "character" => match max_length {
+            Some(n) => format!("character({n})"),
+            None => "character".to_string(),
+        },
+        // numeric/decimal con restricción explícita: preservar (precisión, escala)
+        // para round-trip exacto. `numeric` sin precisión queda sin restricción.
+        "numeric" | "decimal" => match (precision, scale) {
+            (Some(p), Some(s)) => format!("{data_type}({p},{s})"),
+            (Some(p), None) => format!("{data_type}({p})"),
+            _ => data_type.to_string(),
+        },
+        "USER-DEFINED" => udt.to_string(),
+        other => other.to_string(),
     }
 }
 
