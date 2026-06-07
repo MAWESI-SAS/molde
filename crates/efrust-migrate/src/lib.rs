@@ -37,7 +37,8 @@ pub enum MigrateError {
 /// Backend de ejecución: sqlx (Any) o tiberius (SQL Server).
 enum Backend {
     Sqlx(AnyPool),
-    Mssql(Mutex<MssqlClient>),
+    // Boxed: el cliente tiberius es grande; evita inflar la variante Sqlx.
+    Mssql(Box<Mutex<MssqlClient>>),
 }
 
 impl Backend {
@@ -148,7 +149,7 @@ impl Migrator {
             let tcp = tokio::net::TcpStream::connect(config.get_addr()).await?;
             tcp.set_nodelay(true)?;
             let client = tiberius::Client::connect(config, tcp.compat_write()).await?;
-            Backend::Mssql(Mutex::new(client))
+            Backend::Mssql(Box::new(Mutex::new(client)))
         } else {
             install_default_drivers();
             let pool = AnyPoolOptions::new()

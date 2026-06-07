@@ -166,20 +166,15 @@ pub struct PrimaryKey {
 }
 
 /// Comportamiento de borrado referencial. Se mapea al `ON DELETE` del proveedor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReferentialAction {
+    #[default]
     NoAction,
     Restrict,
     Cascade,
     SetNull,
     SetDefault,
-}
-
-impl Default for ReferentialAction {
-    fn default() -> Self {
-        ReferentialAction::NoAction
-    }
 }
 
 /// Clave foránea.

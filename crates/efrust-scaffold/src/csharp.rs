@@ -111,7 +111,7 @@ pub fn singularize(word: &str) -> String {
 /// Divide por `_`, espacio y `-`, capitaliza cada segmento y conserva el resto.
 pub fn pascalize(name: &str) -> String {
     let mut out = String::new();
-    for part in name.split(|c: char| c == '_' || c == ' ' || c == '-') {
+    for part in name.split(['_', ' ', '-']) {
         let mut chars = part.chars();
         if let Some(first) = chars.next() {
             out.extend(first.to_uppercase());
