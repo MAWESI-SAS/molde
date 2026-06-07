@@ -1073,6 +1073,33 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
         });
     }
 
+    // Columnas computadas (sys.computed_columns): definición + si es PERSISTED.
+    let cc_rows = ss_query(
+        &mut client,
+        &format!(
+            "SELECT t.name AS table_name, c.name AS column_name, \
+                    cc.definition AS definition, CAST(cc.is_persisted AS int) AS is_persisted \
+             FROM sys.computed_columns cc \
+             JOIN sys.tables t ON t.object_id = cc.object_id \
+             JOIN sys.columns c ON c.object_id = cc.object_id AND c.column_id = cc.column_id \
+             WHERE SCHEMA_NAME(t.schema_id) = '{sc}'"
+        ),
+    )
+    .await?;
+    for r in &cc_rows {
+        let table_name = r.get::<&str, _>("table_name").unwrap_or("");
+        let column_name = r.get::<&str, _>("column_name").unwrap_or("");
+        let definition = r.get::<&str, _>("definition").unwrap_or("").to_string();
+        let persisted = r.get::<i32, _>("is_persisted").unwrap_or(0) == 1;
+        if let Some(table) = tables.get_mut(table_name) {
+            if let Some(col) = table.columns.iter_mut().find(|c| c.name == column_name) {
+                col.computed_sql = Some(definition);
+                col.computed_stored = persisted;
+                col.default_value_sql = None;
+            }
+        }
+    }
+
     // Claves primarias.
     let pk_rows = ss_query(
         &mut client,
@@ -1186,7 +1213,69 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
     }
 
     model.tables = tables.into_values().collect();
+
+    // Full-text (best-effort): preserva CREATE FULLTEXT CATALOG/INDEX como DDL
+    // crudo. Las vistas sys.fulltext_* existen aunque el componente no esté
+    // instalado (devuelven vacío); si la consulta falla, se omite con aviso.
+    model.raw_objects = read_sqlserver_fulltext(&mut client, &sc).await;
+
     Ok(model)
+}
+
+/// Lee los índices full-text de SQL Server y construye su DDL crudo
+/// (`CREATE FULLTEXT CATALOG` + `CREATE FULLTEXT INDEX … KEY INDEX …`).
+/// Best-effort: devuelve vacío si no hay full-text o si la consulta falla.
+async fn read_sqlserver_fulltext(client: &mut SsClient, sc: &str) -> Vec<String> {
+    let sql = format!(
+        "SELECT SCHEMA_NAME(t.schema_id) AS schema_name, t.name AS table_name, \
+                c.name AS column_name, ki.name AS key_index, cat.name AS catalog_name \
+         FROM sys.fulltext_index_columns fic \
+         JOIN sys.tables t ON t.object_id = fic.object_id \
+         JOIN sys.columns c ON c.object_id = fic.object_id AND c.column_id = fic.column_id \
+         JOIN sys.fulltext_indexes fti ON fti.object_id = fic.object_id \
+         JOIN sys.indexes ki ON ki.object_id = fti.object_id AND ki.index_id = fti.unique_index_id \
+         JOIN sys.fulltext_catalogs cat ON cat.fulltext_catalog_id = fti.fulltext_catalog_id \
+         WHERE SCHEMA_NAME(t.schema_id) = '{sc}' \
+         ORDER BY t.name, fic.column_id"
+    );
+    let rows = match ss_query(client, &sql).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("no se pudieron leer índices full-text de SQL Server: {e}");
+            return Vec::new();
+        }
+    };
+
+    // Agrupar columnas por (tabla) preservando catálogo y key index.
+    let mut by_table: BTreeMap<String, (String, String, String, Vec<String>)> = BTreeMap::new();
+    for r in &rows {
+        let schema_name = r.get::<&str, _>("schema_name").unwrap_or(sc).to_string();
+        let table_name = r.get::<&str, _>("table_name").unwrap_or("").to_string();
+        let column_name = r.get::<&str, _>("column_name").unwrap_or("").to_string();
+        let key_index = r.get::<&str, _>("key_index").unwrap_or("").to_string();
+        let catalog = r.get::<&str, _>("catalog_name").unwrap_or("").to_string();
+        let entry = by_table
+            .entry(table_name.clone())
+            .or_insert((schema_name, key_index, catalog, Vec::new()));
+        entry.3.push(column_name);
+    }
+
+    let mut out = Vec::new();
+    let mut catalogs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (table, (schema_name, key_index, catalog, cols)) in &by_table {
+        if catalogs.insert(catalog.clone()) {
+            out.push(format!(
+                "IF NOT EXISTS (SELECT 1 FROM sys.fulltext_catalogs WHERE name = '{catalog}') \
+                 CREATE FULLTEXT CATALOG [{catalog}];"
+            ));
+        }
+        let col_list = cols.iter().map(|c| format!("[{c}]")).collect::<Vec<_>>().join(", ");
+        out.push(format!(
+            "CREATE FULLTEXT INDEX ON [{schema_name}].[{table}] ({col_list}) \
+             KEY INDEX [{key_index}] ON [{catalog}];"
+        ));
+    }
+    out
 }
 
 fn ss_store_type(data_type: &str, max_len: Option<i32>, prec: Option<i32>, scale: Option<i32>) -> String {

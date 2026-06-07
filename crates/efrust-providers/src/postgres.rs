@@ -185,6 +185,7 @@ impl SqlGenerator for PostgresGenerator {
                 self.quote_ident(name),
                 self.qualified(schema.as_deref(), table)
             )],
+            Operation::RawSql { sql } => vec![sql.clone()],
         };
         Ok(sql)
     }

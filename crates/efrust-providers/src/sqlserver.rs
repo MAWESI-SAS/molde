@@ -39,6 +39,19 @@ impl SqlServerGenerator {
 
     fn column_def(&self, column: &Column) -> Result<String, ProviderError> {
         let mut parts = vec![self.quote_ident(&column.name)];
+        // Columna computada: `[col] AS (expr) [PERSISTED [NOT NULL]]`. No lleva
+        // tipo, IDENTITY ni DEFAULT. La expresión ya viene parentizada por
+        // sys.computed_columns.definition.
+        if let Some(expr) = &column.computed_sql {
+            parts.push(format!("AS {expr}"));
+            if column.computed_stored {
+                parts.push("PERSISTED".into());
+                if !column.is_nullable {
+                    parts.push("NOT NULL".into());
+                }
+            }
+            return Ok(parts.join(" "));
+        }
         if column.is_identity {
             parts.push("int NOT NULL IDENTITY(1,1)".into());
         } else {
@@ -201,6 +214,7 @@ impl SqlGenerator for SqlServerGenerator {
                 self.quote_ident(name),
                 self.qualified(schema.as_deref(), table)
             )],
+            Operation::RawSql { sql } => vec![sql.clone()],
             Operation::EnsureExtension { .. }
             | Operation::CreateFunction { .. }
             | Operation::DropFunction { .. }

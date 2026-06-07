@@ -34,6 +34,11 @@ pub struct DatabaseModel {
     /// Objetos que EF no modela; se preservan como SQL crudo (`definition`).
     #[serde(default)]
     pub functions: Vec<DbFunction>,
+    /// DDL crudo pre-renderizado a preservar verbatim (escape hatch para objetos
+    /// específicos del motor que no encajan en el IR; p. ej. full-text de SQL
+    /// Server: `CREATE FULLTEXT CATALOG`/`CREATE FULLTEXT INDEX`).
+    #[serde(default)]
+    pub raw_objects: Vec<String>,
 }
 
 impl DatabaseModel {
@@ -45,6 +50,7 @@ impl DatabaseModel {
             default_schema: None,
             tables: Vec::new(),
             functions: Vec::new(),
+            raw_objects: Vec::new(),
         }
     }
 
@@ -71,6 +77,7 @@ impl DatabaseModel {
         self.functions.sort_by(|a, b| {
             (a.schema.as_deref(), a.name.as_str()).cmp(&(b.schema.as_deref(), b.name.as_str()))
         });
+        self.raw_objects.sort();
     }
 }
 

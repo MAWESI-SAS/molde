@@ -28,7 +28,7 @@ efrust (CLI, Rust)
 | `database update` (apply) | ✅ | ✅ | ✅ | ✅ (tiberius) |
 | `migrations add/remove/list` | ✅ | ✅ | ✅ | ✅ |
 | `scaffold` (BD → C#) | ✅ | ✅ | ✅ | ✅ (tiberius) |
-| Búsqueda / full-text en scaffold + round-trip | ✅ pgvector+tsvector+triggers | ✅ FULLTEXT+generated | — | — |
+| Búsqueda / full-text en scaffold + round-trip | ✅ pgvector+tsvector+triggers | ✅ FULLTEXT+generated | — | ✅ computed PERSISTED · FTS best-effort |
 | Paridad verificada con `dotnet ef` | ✅ | — | — | — |
 
 > SQLite: las FKs se declaran inline en `CREATE TABLE` (no soporta `ALTER ADD FK`).
@@ -67,6 +67,7 @@ Ver [`docs/model-ir.md`](docs/model-ir.md) para el contrato central.
 | **10** | Auto `CREATE EXTENSION` para pgvector en apply | ✅ verificado vs pgvector |
 | **11** | Singularización de nombres en scaffold (`documents` → `Document`) | ✅ |
 | **12** | **Búsqueda en MySQL**: índices FULLTEXT + columnas generadas en scaffold y round-trip | ✅ verificado vs MySQL 8 |
+| **13** | **SQL Server**: columnas computadas `PERSISTED` (round-trip) + full-text best-effort (`raw_objects`/`RawSql`) | ✅ computed vs SQL Server 2022; FTS code-complete |
 
 > **Notas Fase 5c:**
 > - **Normalización de nombres**: el scaffold convierte `snake_case` → `PascalCase`

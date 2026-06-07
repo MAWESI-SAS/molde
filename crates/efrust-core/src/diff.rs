@@ -84,6 +84,10 @@ pub enum Operation {
         table: String,
         name: String,
     },
+    /// DDL crudo a ejecutar verbatim (escape hatch; ver [`DatabaseModel::raw_objects`]).
+    RawSql {
+        sql: String,
+    },
 }
 
 /// Calcula las operaciones necesarias para transformar `from` en `to`.
@@ -108,7 +112,16 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     let mut add_fks = Vec::new();
     let mut create_indexes = Vec::new();
     let mut create_triggers = Vec::new();
+    let mut raw_sql = Vec::new();
     let mut drop_tables = Vec::new();
+
+    // Objetos DDL crudos nuevos (full-text de SQL Server, etc.). Verbatim, al
+    // final (dependen de tablas/índices ya creados).
+    for obj in &to.raw_objects {
+        if !from.raw_objects.contains(obj) {
+            raw_sql.push(Operation::RawSql { sql: obj.clone() });
+        }
+    }
 
     // Extensión pgvector: asegurarla cuando el destino la requiere y el origen
     // no. Se antepone a todo (los tipos `vector`/índices hnsw la necesitan).
@@ -210,6 +223,7 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     ops.extend(add_fks);
     ops.extend(create_indexes);
     ops.extend(create_triggers);
+    ops.extend(raw_sql);
     ops.extend(drop_tables);
     ops
 }
@@ -405,6 +419,11 @@ pub fn apply_operation(model: &mut DatabaseModel, op: &Operation) {
         Operation::DropTrigger { schema, table, name } => {
             if let Some(t) = find_mut(model, schema, table) {
                 t.triggers.retain(|x| &x.name != name);
+            }
+        }
+        Operation::RawSql { sql } => {
+            if !model.raw_objects.contains(sql) {
+                model.raw_objects.push(sql.clone());
             }
         }
     }

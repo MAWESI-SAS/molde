@@ -319,6 +319,44 @@ mod tests {
     }
 
     #[test]
+    fn sqlserver_columna_computada_persisted() {
+        use efrust_core::model::Column;
+        let col = Column {
+            name: "FullName".into(),
+            store_type: None,
+            clr_type: Some("System.String".into()),
+            is_nullable: false,
+            is_identity: false,
+            max_length: None,
+            precision: None,
+            scale: None,
+            default_value_sql: None,
+            computed_sql: Some("([First]+' '+[Last])".into()),
+            computed_stored: true,
+            collation: None,
+            comment: None,
+        };
+        let sql = SqlServerGenerator::new()
+            .emit(&Operation::AddColumn { schema: None, table: "People".into(), column: col })
+            .unwrap()
+            .join("\n");
+        assert!(sql.contains("[FullName] AS ([First]+' '+[Last]) PERSISTED NOT NULL"), "got: {sql}");
+    }
+
+    #[test]
+    fn raw_sql_verbatim_en_todos_los_motores() {
+        let op = Operation::RawSql { sql: "CREATE FULLTEXT CATALOG [ft];".into() };
+        for sql in [
+            PostgresGenerator::new().emit(&op).unwrap().join(""),
+            MySqlGenerator::new().emit(&op).unwrap().join(""),
+            SqliteGenerator::new().emit(&op).unwrap().join(""),
+            SqlServerGenerator::new().emit(&op).unwrap().join(""),
+        ] {
+            assert_eq!(sql, "CREATE FULLTEXT CATALOG [ft];");
+        }
+    }
+
+    #[test]
     fn mysql_create_table_fk_indice() {
         let gen = MySqlGenerator::new();
         let create = gen.emit(&Operation::CreateTable { table: customer() }).unwrap().join("\n");

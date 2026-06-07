@@ -177,6 +177,7 @@ impl SqlGenerator for SqliteGenerator {
                 );
                 Vec::new()
             }
+            Operation::RawSql { sql } => vec![sql.clone()],
             Operation::EnsureExtension { .. }
             | Operation::CreateFunction { .. }
             | Operation::DropFunction { .. }

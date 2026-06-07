@@ -395,7 +395,11 @@ fn db_objects_sql(model: &DatabaseModel, provider: Provider) -> Option<String> {
         .collect();
 
     let has_triggers = model.tables.iter().any(|t| !t.triggers.is_empty());
-    if model.functions.is_empty() && raw_indexes.is_empty() && !has_triggers {
+    if model.functions.is_empty()
+        && raw_indexes.is_empty()
+        && !has_triggers
+        && model.raw_objects.is_empty()
+    {
         return None;
     }
 
@@ -434,6 +438,13 @@ fn db_objects_sql(model: &DatabaseModel, provider: Provider) -> Option<String> {
             for tg in &t.triggers {
                 let _ = writeln!(s, "{};", tg.definition.trim_end_matches(';'));
             }
+        }
+    }
+
+    if !model.raw_objects.is_empty() {
+        let _ = writeln!(s, "\n-- Full-text / objetos específicos del motor");
+        for obj in &model.raw_objects {
+            let _ = writeln!(s, "{obj}");
         }
     }
 
