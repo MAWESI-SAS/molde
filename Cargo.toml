@@ -7,6 +7,7 @@ members = [
     "crates/efrust-migrate",
     "crates/efrust-scaffold",
     "crates/efrust-design",
+    "crates/efrust-lang",
 ]
 
 [workspace.package]
@@ -21,6 +22,7 @@ repository = ""
 # Internal crates
 efrust-core = { path = "crates/efrust-core" }
 efrust-providers = { path = "crates/efrust-providers" }
+efrust-lang = { path = "crates/efrust-lang" }
 # default-features=false para que el binario (efrust-cli) elija el backend TLS
 # de sqlx vía sus propias features (tls-rustls por defecto / tls-native-tls).
 # Los tests de cada crate igual activan su default al construirse como target.
