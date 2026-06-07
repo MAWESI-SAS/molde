@@ -28,6 +28,15 @@ impl MySqlGenerator {
 
     fn column_def(&self, column: &Column) -> Result<String, ProviderError> {
         let mut parts = vec![self.quote_ident(&column.name), self.store_type_for(column)?];
+        // Columna generada (STORED/VIRTUAL). Excluye AUTO_INCREMENT y DEFAULT.
+        if let Some(expr) = &column.computed_sql {
+            let kind = if column.computed_stored { "STORED" } else { "VIRTUAL" };
+            parts.push(format!("GENERATED ALWAYS AS ({expr}) {kind}"));
+            if !column.is_nullable {
+                parts.push("NOT NULL".into());
+            }
+            return Ok(parts.join(" "));
+        }
         if !column.is_nullable {
             parts.push("NOT NULL".into());
         }
@@ -72,10 +81,16 @@ impl MySqlGenerator {
     }
 
     fn create_index(&self, table: &str, index: &Index) -> String {
-        let unique = if index.is_unique { "UNIQUE " } else { "" };
+        // FULLTEXT/SPATIAL tienen prioridad sobre UNIQUE (MySQL no combina).
+        let kind = match index.method.as_deref() {
+            Some("fulltext") => "FULLTEXT ",
+            Some("spatial") => "SPATIAL ",
+            _ if index.is_unique => "UNIQUE ",
+            _ => "",
+        };
         let cols: Vec<String> = index.columns.iter().map(|c| self.quote_ident(c)).collect();
         format!(
-            "CREATE {unique}INDEX {} ON {} ({});",
+            "CREATE {kind}INDEX {} ON {} ({});",
             self.quote_ident(&index.name),
             self.quote_ident(table),
             cols.join(", "),

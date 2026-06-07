@@ -8,7 +8,8 @@
 
 use std::fmt::Write;
 
-use efrust_core::model::{DatabaseModel, ForeignKey, ReferentialAction, Table};
+use efrust_core::model::{DatabaseModel, ForeignKey, Index, ReferentialAction, Table};
+use efrust_providers::Provider;
 
 use crate::csharp::{self, pascalize};
 
@@ -17,6 +18,9 @@ use crate::csharp::{self, pascalize};
 pub struct CodegenOptions {
     pub namespace: String,
     pub context_name: String,
+    /// Motor de origen del scaffold. Determina qué idioms Fluent EF se emiten
+    /// (p. ej. `HasMethod`/`HasOperators` solo aplican a Npgsql/PostgreSQL).
+    pub provider: Provider,
 }
 
 impl Default for CodegenOptions {
@@ -24,7 +28,22 @@ impl Default for CodegenOptions {
         Self {
             namespace: "App.Data".to_string(),
             context_name: "AppDbContext".to_string(),
+            provider: Provider::Postgres,
         }
+    }
+}
+
+/// ¿El índice se expresa con Fluent API de EF, o debe ir al artefacto `.sql`?
+/// - Índices por expresión → siempre `.sql` (EF no los modela).
+/// - PostgreSQL: los métodos (gin/hnsw/…) se expresan con `HasMethod`/`HasOperators`.
+/// - Otros motores: un método no estándar (FULLTEXT/SPATIAL) → `.sql`.
+fn index_is_fluent(provider: Provider, idx: &Index) -> bool {
+    if idx.expression.is_some() || idx.columns.is_empty() {
+        return false;
+    }
+    match provider {
+        Provider::Postgres => true,
+        _ => idx.method.is_none(),
     }
 }
 
@@ -47,8 +66,8 @@ pub fn generate(model: &DatabaseModel, opts: &CodegenOptions) -> Vec<GeneratedFi
         })
         .collect();
 
-    // Objetos no modelables por EF (funciones, triggers, índices por expresión).
-    let db_objects = db_objects_sql(model);
+    // Objetos no modelables por EF (funciones, triggers, índices no-Fluent).
+    let db_objects = db_objects_sql(model, opts.provider);
 
     files.push(GeneratedFile {
         relative_path: format!("{}.cs", opts.context_name),
@@ -162,7 +181,7 @@ fn db_context(model: &DatabaseModel, opts: &CodegenOptions, has_db_objects: bool
         if i > 0 {
             let _ = writeln!(s);
         }
-        write_entity_config(&mut s, table, model);
+        write_entity_config(&mut s, table, model, opts.provider);
     }
     if has_db_objects {
         let _ = writeln!(s);
@@ -181,7 +200,7 @@ fn db_context(model: &DatabaseModel, opts: &CodegenOptions, has_db_objects: bool
     s
 }
 
-fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel) {
+fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel, provider: Provider) {
     let cls = class_name(table);
     let _ = writeln!(s, "        modelBuilder.Entity<{cls}>(entity =>");
     let _ = writeln!(s, "        {{");
@@ -225,9 +244,8 @@ fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel) {
     }
 
     for idx in &table.indexes {
-        // Los índices por expresión no se pueden expresar con Fluent API; van al
-        // artefacto .sql.
-        if idx.expression.is_some() || idx.columns.is_empty() {
+        // Índices por expresión o con método no modelable (FULLTEXT…) → artefacto .sql.
+        if !index_is_fluent(provider, idx) {
             continue;
         }
         let target = key_selector(&idx.columns);
@@ -238,17 +256,20 @@ fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel) {
         if let Some(f) = &idx.filter {
             let _ = write!(chain, ".HasFilter(\"{}\")", escape_cs(f));
         }
-        if let Some(m) = &idx.method {
-            let _ = write!(chain, ".HasMethod(\"{m}\")");
-        }
-        if !idx.operators.is_empty() {
-            let ops = idx
-                .operators
-                .iter()
-                .map(|o| format!("\"{o}\""))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let _ = write!(chain, ".HasOperators({ops})");
+        // HasMethod/HasOperators son idioms Npgsql (solo PostgreSQL).
+        if provider == Provider::Postgres {
+            if let Some(m) = &idx.method {
+                let _ = write!(chain, ".HasMethod(\"{m}\")");
+            }
+            if !idx.operators.is_empty() {
+                let ops = idx
+                    .operators
+                    .iter()
+                    .map(|o| format!("\"{o}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let _ = write!(chain, ".HasOperators({ops})");
+            }
         }
         let _ = writeln!(s, "            entity.HasIndex({target}, \"{}\"){chain};", idx.name);
     }
@@ -357,27 +378,28 @@ fn escape_cs(s: &str) -> String {
 /// por expresión (full-text/funcionales) y triggers. Devuelve `None` si no hay
 /// ninguno. La generación del `CREATE INDEX` se delega al provider de Postgres
 /// para que coincida exactamente con la que aplica `database update`.
-fn db_objects_sql(model: &DatabaseModel) -> Option<String> {
+fn db_objects_sql(model: &DatabaseModel, provider: Provider) -> Option<String> {
     use efrust_core::diff::Operation;
-    use efrust_providers::{PostgresGenerator, SqlGenerator};
 
-    let expr_indexes: Vec<(&Table, &efrust_core::model::Index)> = model
+    // Índices que NO se expresan con Fluent API (por expresión o método no
+    // modelable como FULLTEXT) → SQL crudo con el dialecto del motor de origen.
+    let raw_indexes: Vec<(&Table, &Index)> = model
         .tables
         .iter()
         .flat_map(|t| {
             t.indexes
                 .iter()
-                .filter(|i| i.expression.is_some())
+                .filter(|i| !index_is_fluent(provider, i))
                 .map(move |i| (t, i))
         })
         .collect();
 
     let has_triggers = model.tables.iter().any(|t| !t.triggers.is_empty());
-    if model.functions.is_empty() && expr_indexes.is_empty() && !has_triggers {
+    if model.functions.is_empty() && raw_indexes.is_empty() && !has_triggers {
         return None;
     }
 
-    let gen = PostgresGenerator::new();
+    let gen = provider.generator();
     let mut s = String::new();
     let _ = writeln!(s, "-- Objetos de base de datos no modelables por EF Core.");
     let _ = writeln!(s, "-- Generado por `efrust scaffold`. Aplicar fuera del modelo EF");
@@ -390,9 +412,9 @@ fn db_objects_sql(model: &DatabaseModel) -> Option<String> {
         }
     }
 
-    if !expr_indexes.is_empty() {
+    if !raw_indexes.is_empty() {
         let _ = writeln!(s, "\n-- Índices (por expresión / full-text)");
-        for (t, idx) in &expr_indexes {
+        for (t, idx) in &raw_indexes {
             let op = Operation::CreateIndex {
                 schema: t.schema.clone(),
                 table: t.name.clone(),
@@ -632,6 +654,47 @@ mod tests {
         let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
         assert!(ctx.contains("public virtual DbSet<Document> Documents"), "DbSet plural; got: {ctx}");
         assert!(ctx.contains("entity.ToTable(\"documents\");"), "ToTable conserva el nombre de BD");
+    }
+
+    #[test]
+    fn mysql_fulltext_va_al_artefacto_no_a_fluent() {
+        use efrust_core::model::Index;
+        let mut m = DatabaseModel::empty();
+        m.tables.push(Table {
+            name: "documents".into(),
+            schema: None,
+            clr_type: None,
+            comment: None,
+            columns: vec![
+                col("id", "System.Int32", false, None),
+                col("body", "System.String", true, None),
+            ],
+            primary_key: Some(PrimaryKey { name: "pk".into(), columns: vec!["id".into()] }),
+            foreign_keys: vec![],
+            indexes: vec![Index {
+                name: "ft_body".into(),
+                columns: vec!["body".into()],
+                is_unique: false,
+                filter: None,
+                method: Some("fulltext".into()),
+                operators: vec![],
+                expression: None,
+            }],
+            triggers: vec![],
+        });
+        let opts = CodegenOptions { provider: efrust_providers::Provider::MySql, ..Default::default() };
+        let files = generate(&m, &opts);
+        let ctx = &files.iter().find(|f| f.relative_path == "AppDbContext.cs").unwrap().contents;
+        // No se emite HasMethod (idiom Npgsql) ni el índice fulltext en Fluent.
+        assert!(!ctx.contains("HasMethod"), "MySQL no debe usar HasMethod: {ctx}");
+        assert!(!ctx.contains("ft_body"), "el fulltext no va a Fluent");
+        // Va al artefacto .sql con dialecto MySQL (backticks + FULLTEXT).
+        let sql = &files
+            .iter()
+            .find(|f| f.relative_path == "AppDbContext.DbObjects.sql")
+            .expect("artefacto .sql")
+            .contents;
+        assert!(sql.contains("CREATE FULLTEXT INDEX `ft_body` ON `documents` (`body`);"), "got: {sql}");
     }
 
     #[test]

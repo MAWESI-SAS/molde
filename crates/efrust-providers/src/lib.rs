@@ -337,6 +337,50 @@ mod tests {
     }
 
     #[test]
+    fn mysql_fulltext_index_y_columna_generada() {
+        use efrust_core::model::{Column, Index};
+        let gen = MySqlGenerator::new();
+        // FULLTEXT index.
+        let op = Operation::CreateIndex {
+            schema: None,
+            table: "documents".into(),
+            index: Index {
+                name: "ft_body".into(),
+                columns: vec!["body".into()],
+                is_unique: false,
+                filter: None,
+                method: Some("fulltext".into()),
+                operators: vec![],
+                expression: None,
+            },
+        };
+        let sql = gen.emit(&op).unwrap().join("\n");
+        assert!(sql.contains("CREATE FULLTEXT INDEX `ft_body` ON `documents` (`body`);"), "got: {sql}");
+
+        // Columna generada STORED.
+        let col = Column {
+            name: "slug".into(),
+            store_type: Some("varchar(255)".into()),
+            clr_type: Some("System.String".into()),
+            is_nullable: false,
+            is_identity: false,
+            max_length: Some(255),
+            precision: None,
+            scale: None,
+            default_value_sql: None,
+            computed_sql: Some("lower(`title`)".into()),
+            computed_stored: true,
+            collation: None,
+            comment: None,
+        };
+        let add = gen
+            .emit(&Operation::AddColumn { schema: None, table: "documents".into(), column: col })
+            .unwrap()
+            .join("\n");
+        assert!(add.contains("GENERATED ALWAYS AS (lower(`title`)) STORED"), "got: {add}");
+    }
+
+    #[test]
     fn sqlite_indice_si_fk_inline_en_create_table() {
         let gen = SqliteGenerator::new();
         // El índice se genera.

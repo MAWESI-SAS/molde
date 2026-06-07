@@ -24,7 +24,10 @@ pub async fn build_files(
     opts: &CodegenOptions,
 ) -> Result<Vec<GeneratedFile>, ReadError> {
     let model = reader::read_model(url, provider, schema).await?;
-    Ok(codegen::generate(&model, opts))
+    // El provider de origen manda sobre el de las opciones (idioms por motor).
+    let mut opts = opts.clone();
+    opts.provider = provider;
+    Ok(codegen::generate(&model, &opts))
 }
 
 #[cfg(test)]

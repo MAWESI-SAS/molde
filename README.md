@@ -28,7 +28,7 @@ efrust (CLI, Rust)
 | `database update` (apply) | ✅ | ✅ | ✅ | ✅ (tiberius) |
 | `migrations add/remove/list` | ✅ | ✅ | ✅ | ✅ |
 | `scaffold` (BD → C#) | ✅ | ✅ | ✅ | ✅ (tiberius) |
-| Búsqueda vectorial / full-text (pgvector, tsvector, triggers) | ✅ | — | — | — |
+| Búsqueda / full-text en scaffold + round-trip | ✅ pgvector+tsvector+triggers | ✅ FULLTEXT+generated | — | — |
 | Paridad verificada con `dotnet ef` | ✅ | — | — | — |
 
 > SQLite: las FKs se declaran inline en `CREATE TABLE` (no soporta `ALTER ADD FK`).
@@ -64,6 +64,9 @@ Ver [`docs/model-ir.md`](docs/model-ir.md) para el contrato central.
 | **7** | Apply de **SQL Server** vía `tiberius` (driver TDS) | ✅ verificado vs SQL Server real |
 | **8** | **Scaffold de SQL Server** vía `tiberius` (cierra la matriz) | ✅ verificado vs SQL Server real |
 | **9** | **Búsqueda en PostgreSQL**: pgvector + full-text (tsvector) + triggers/funciones en scaffold y round-trip | ✅ verificado vs Postgres + pgvector |
+| **10** | Auto `CREATE EXTENSION` para pgvector en apply | ✅ verificado vs pgvector |
+| **11** | Singularización de nombres en scaffold (`documents` → `Document`) | ✅ |
+| **12** | **Búsqueda en MySQL**: índices FULLTEXT + columnas generadas en scaffold y round-trip | ✅ verificado vs MySQL 8 |
 
 > **Notas Fase 5c:**
 > - **Normalización de nombres**: el scaffold convierte `snake_case` → `PascalCase`

@@ -50,6 +50,7 @@ pub fn run(args: ScaffoldArgs) -> anyhow::Result<()> {
     let opts = CodegenOptions {
         namespace: args.namespace,
         context_name: args.context,
+        provider,
     };
 
     let runtime = tokio::runtime::Builder::new_current_thread()

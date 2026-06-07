@@ -797,6 +797,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
                 CONVERT(COLUMN_TYPE USING utf8mb4) AS COLUMN_TYPE, \
                 CONVERT(IS_NULLABLE USING utf8mb4) AS IS_NULLABLE, \
                 CONVERT(EXTRA USING utf8mb4) AS EXTRA, \
+                CONVERT(GENERATION_EXPRESSION USING utf8mb4) AS GENERATION_EXPRESSION, \
                 CAST(CHARACTER_MAXIMUM_LENGTH AS SIGNED) AS CHARACTER_MAXIMUM_LENGTH, \
                 CAST(NUMERIC_PRECISION AS SIGNED) AS NUMERIC_PRECISION, \
                 CAST(NUMERIC_SCALE AS SIGNED) AS NUMERIC_SCALE, \
@@ -821,7 +822,17 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
         let scale: Option<i64> = r.try_get("NUMERIC_SCALE").ok().flatten();
         let default: Option<String> = my_opt_str(&r, "COLUMN_DEFAULT").unwrap_or_default();
 
-        let identity = extra.to_ascii_lowercase().contains("auto_increment");
+        let extra_lc = extra.to_ascii_lowercase();
+        let identity = extra_lc.contains("auto_increment");
+        // Columnas generadas: EXTRA = 'STORED GENERATED' | 'VIRTUAL GENERATED'.
+        let computed_stored = extra_lc.contains("stored generated");
+        let computed = computed_stored || extra_lc.contains("virtual generated");
+        let gen_expr: Option<String> = my_opt_str(&r, "GENERATION_EXPRESSION").unwrap_or_default();
+        let computed_sql = if computed {
+            gen_expr.filter(|s| !s.is_empty())
+        } else {
+            None
+        };
         let max_length = match data_type.as_str() {
             "varchar" | "char" | "varbinary" | "binary" => {
                 max_len.filter(|n| *n > 0 && *n <= i32::MAX as i64).map(|n| n as i32)
@@ -838,9 +849,9 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
             max_length,
             precision: precision.map(|n| n as i32),
             scale: scale.map(|n| n as i32),
-            default_value_sql: if identity { None } else { default },
-            computed_sql: None,
-            computed_stored: false,
+            default_value_sql: if identity || computed { None } else { default },
+            computed_sql,
+            computed_stored,
             collation: None,
             comment: None,
         });
@@ -917,6 +928,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
         "SELECT CONVERT(TABLE_NAME USING utf8mb4) AS TABLE_NAME, \
                 CONVERT(INDEX_NAME USING utf8mb4) AS INDEX_NAME, \
                 CAST(NON_UNIQUE AS SIGNED) AS NON_UNIQUE, \
+                CONVERT(INDEX_TYPE USING utf8mb4) AS INDEX_TYPE, \
                 CONVERT(COLUMN_NAME USING utf8mb4) AS COLUMN_NAME \
          FROM information_schema.STATISTICS \
          WHERE TABLE_SCHEMA = '{sc}' AND INDEX_NAME <> 'PRIMARY' \
@@ -932,6 +944,13 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
         let name = my_str(&r, "INDEX_NAME")?;
         let non_unique: i64 = r.try_get("NON_UNIQUE").unwrap_or(1);
         let column = my_str(&r, "COLUMN_NAME")?;
+        // INDEX_TYPE = FULLTEXT|SPATIAL|BTREE|HASH; BTREE/HASH = método por defecto.
+        let index_type = my_str(&r, "INDEX_TYPE").unwrap_or_default();
+        let method = match index_type.to_ascii_uppercase().as_str() {
+            "FULLTEXT" => Some("fulltext".to_string()),
+            "SPATIAL" => Some("spatial".to_string()),
+            _ => None,
+        };
         match table.indexes.iter_mut().find(|i| i.name == name) {
             Some(ix) => ix.columns.push(column),
             None => table.indexes.push(Index {
@@ -939,7 +958,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
                 columns: vec![column],
                 is_unique: non_unique == 0,
                 filter: None,
-                method: None,
+                method,
                 operators: Vec::new(),
                 expression: None,
             }),
