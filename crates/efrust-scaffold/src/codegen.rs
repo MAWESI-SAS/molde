@@ -268,6 +268,21 @@ fn write_entity_config(s: &mut String, table: &Table, model: &DatabaseModel, pro
             if let Some(st) = exotic_store_type(col) {
                 let _ = write!(chain, ".HasColumnType(\"{}\")", escape_cs(st));
             }
+            // numeric/decimal con precisión declarada → HasPrecision(p[, s]),
+            // el idiom de EF. Sin esto se perdería p/s: numeric es "convencional"
+            // y por tanto NO emite HasColumnType que la conserve.
+            if is_decimal_store_type(col) {
+                if let Some(p) = col.precision {
+                    match col.scale {
+                        Some(sc) if sc != 0 => {
+                            let _ = write!(chain, ".HasPrecision({p}, {sc})");
+                        }
+                        _ => {
+                            let _ = write!(chain, ".HasPrecision({p})");
+                        }
+                    }
+                }
+            }
         }
         if !chain.is_empty() {
             let _ = writeln!(s, "            entity.Property(e => e.{pname}){chain};");
@@ -520,6 +535,24 @@ fn exotic_store_type(col: &Column) -> Option<&str> {
         None
     } else {
         Some(st)
+    }
+}
+
+/// `true` si la columna es decimal de precisión variable (`numeric`/`decimal`),
+/// el caso en el que EF emite `HasPrecision(p, s)`. `money`/`smallmoney` quedan
+/// fuera: tienen precisión fija y EF no la anota.
+fn is_decimal_store_type(col: &Column) -> bool {
+    match col.store_type.as_deref() {
+        Some(st) => {
+            let base = st
+                .split('(')
+                .next()
+                .unwrap_or(st)
+                .trim()
+                .to_ascii_lowercase();
+            matches!(base.as_str(), "numeric" | "decimal")
+        }
+        None => col.clr_type.as_deref() == Some("System.Decimal"),
     }
 }
 
@@ -914,6 +947,58 @@ mod tests {
             !ctx.contains("HasColumnType(\"character varying"),
             "no HasColumnType para varchar"
         );
+    }
+
+    #[test]
+    fn numeric_con_precision_emite_has_precision() {
+        let mut m = DatabaseModel::empty();
+        // numeric(18,2) → HasPrecision(18, 2).
+        let mut total = col("total", "System.Decimal", false, None);
+        total.store_type = Some("numeric(18,2)".into());
+        total.precision = Some(18);
+        total.scale = Some(2);
+        // numeric(10,0) → HasPrecision(10) (la escala 0 se omite, como EF).
+        let mut qty = col("qty", "System.Decimal", false, None);
+        qty.store_type = Some("numeric(10,0)".into());
+        qty.precision = Some(10);
+        qty.scale = Some(0);
+        // numeric pelado (sin precisión declarada) → nada.
+        let mut raw = col("raw", "System.Decimal", true, None);
+        raw.store_type = Some("numeric".into());
+        m.tables.push(Table {
+            name: "lines".into(),
+            schema: None,
+            clr_type: None,
+            comment: None,
+            columns: vec![col("id", "System.Int32", false, None), total, qty, raw],
+            primary_key: Some(PrimaryKey {
+                name: "pk".into(),
+                columns: vec!["id".into()],
+            }),
+            foreign_keys: vec![],
+            indexes: vec![],
+            triggers: vec![],
+            seed_data: vec![],
+        });
+        let ctx = &generate(&m, &CodegenOptions::default())
+            .into_iter()
+            .find(|f| f.relative_path == "AppDbContext.cs")
+            .unwrap()
+            .contents;
+        assert!(
+            ctx.contains("e.Total).HasColumnName(\"total\").HasPrecision(18, 2);"),
+            "got: {ctx}"
+        );
+        assert!(
+            ctx.contains("e.Qty).HasColumnName(\"qty\").HasPrecision(10);"),
+            "got: {ctx}"
+        );
+        // numeric pelado (sin precisión) no emite HasPrecision; solo conserva el
+        // HasColumnName por la diferencia de casing raw → Raw.
+        assert!(ctx.contains("e.Raw).HasColumnName(\"raw\");"), "got: {ctx}");
+        assert!(!ctx.contains("e.Raw).HasColumnName(\"raw\").HasPrecision"));
+        // numeric es convencional: nunca HasColumnType.
+        assert!(!ctx.contains("HasColumnType(\"numeric"), "got: {ctx}");
     }
 
     #[test]
