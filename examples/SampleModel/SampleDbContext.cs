@@ -28,6 +28,8 @@ public class SampleDbContext : DbContext
             e.HasData(
                 new Customer { Id = 1, Name = "ACME", Email = "acme@example.com" },
                 new Customer { Id = 2, Name = "Globex", Email = null });
+            // Tipo owned embebido: columnas Contact_Phone en la tabla Customer.
+            e.OwnsOne(x => x.Contact);
         });
 
         // TPH: una tabla "Payment" con discriminador para base + derivados.
@@ -45,6 +47,8 @@ public class SampleDbContext : DbContext
             e.ToTable("Order");
             e.HasKey(x => x.Id).HasName("PK_Order");
             e.Property(x => x.Total).HasColumnType("TEXT");
+            // Value converter: el enum se guarda como string.
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             e.HasOne(x => x.Customer)
                 .WithMany(c => c.Orders)
                 .HasForeignKey(x => x.CustomerId)

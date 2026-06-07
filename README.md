@@ -74,6 +74,8 @@ Ver [`docs/model-ir.md`](docs/model-ir.md) para el contrato central.
 | **15** | Sidecar empaquetable como **`dotnet tool`** (`EFRUST_SIDECAR_CMD`) | ✅ pack + install + ejecución verificados |
 | **16a** | **Herencia TPH**: el sidecar funde base+derivados en una sola tabla (columnas unidas + discriminador) en vez de duplicar | ✅ verificado vs EF real (1 tabla `Payment`) |
 | **16b** | **Seed data (`HasData`)**: sidecar→IR→`INSERT`/`UPDATE`/`DELETE` + `HasData` en scaffold | ✅ extracción verificada vs EF real; diff/SQL unit |
+| **16c** | **Owned types** (`OwnsOne`): se embeben como columnas en la tabla del owner (vía la fusión por tabla de 16a) | ✅ `Contact_Phone` en Customer |
+| **16d** | **Value converters**: el `store_type` ya refleja el tipo convertido (enum→string) | ✅ `Status` → `varchar(20)` |
 
 > **Notas Fase 5c:**
 > - **Normalización de nombres**: el scaffold convierte `snake_case` → `PascalCase`
