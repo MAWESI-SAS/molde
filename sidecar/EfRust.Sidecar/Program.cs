@@ -256,6 +256,11 @@ internal static class ModelMapper
             DefaultSchema = model.GetDefaultSchema(),
         };
 
+        // Agrupar tipos de entidad por tabla física. En herencia TPH varios tipos
+        // CLR (base + derivados) comparten la MISMA tabla; deben fundirse en un
+        // único TableDto (columnas/FKs/índices unidos, columna discriminadora
+        // incluida como una columna normal) en vez de emitir tablas duplicadas.
+        var groups = new Dictionary<string, List<IEntityType>>();
         foreach (var entity in model.GetEntityTypes())
         {
             var tableName = entity.GetTableName();
@@ -263,39 +268,65 @@ internal static class ModelMapper
             {
                 continue; // keyless / sin tabla (owned sin tabla propia, vistas, etc.)
             }
-            var schema = entity.GetSchema();
+            var key = $"{entity.GetSchema()}.{tableName}";
+            if (!groups.TryGetValue(key, out var list))
+            {
+                list = new List<IEntityType>();
+                groups[key] = list;
+            }
+            list.Add(entity);
+        }
+
+        foreach (var group in groups.Values)
+        {
+            // La raíz (BaseType == null) define nombre/PK/clr_type; si no hay raíz
+            // explícita en el grupo, se usa el primero.
+            var root = group.FirstOrDefault(e => e.BaseType is null) ?? group[0];
+            var tableName = root.GetTableName()!;
+            var schema = root.GetSchema();
             var store = StoreObjectIdentifier.Table(tableName, schema);
 
             var table = new TableDto
             {
                 Name = tableName,
                 Schema = schema,
-                ClrType = entity.ClrType.FullName,
-                Comment = entity.GetComment(),
+                ClrType = root.ClrType.FullName,
+                Comment = root.GetComment(),
             };
 
-            foreach (var p in entity.GetProperties())
+            // Columnas: unión sobre todos los tipos del grupo (dedup por nombre de
+            // columna). Las propiedades de tipos derivados son columnas nullable.
+            var seenCols = new HashSet<string>();
+            foreach (var entity in group)
             {
-                var clr = Nullable.GetUnderlyingType(p.ClrType) ?? p.ClrType;
-                table.Columns.Add(new ColumnDto
+                foreach (var p in entity.GetProperties())
                 {
-                    Name = p.GetColumnName(store) ?? p.Name,
-                    StoreType = p.GetColumnType(store),
-                    ClrType = clr.FullName,
-                    IsNullable = p.IsColumnNullable(store),
-                    IsIdentity = p.ValueGenerated == ValueGenerated.OnAdd && IsInteger(clr),
-                    MaxLength = p.GetMaxLength(),
-                    Precision = p.GetPrecision(),
-                    Scale = p.GetScale(),
-                    DefaultValueSql = p.GetDefaultValueSql(store),
-                    ComputedSql = p.GetComputedColumnSql(store),
-                    ComputedStored = p.GetIsStored(store) ?? false,
-                    Collation = p.GetCollation(),
-                    Comment = p.GetComment(store),
-                });
+                    var colName = p.GetColumnName(store) ?? p.Name;
+                    if (!seenCols.Add(colName))
+                    {
+                        continue;
+                    }
+                    var clr = Nullable.GetUnderlyingType(p.ClrType) ?? p.ClrType;
+                    table.Columns.Add(new ColumnDto
+                    {
+                        Name = colName,
+                        StoreType = p.GetColumnType(store),
+                        ClrType = clr.FullName,
+                        IsNullable = p.IsColumnNullable(store),
+                        IsIdentity = p.ValueGenerated == ValueGenerated.OnAdd && IsInteger(clr),
+                        MaxLength = p.GetMaxLength(),
+                        Precision = p.GetPrecision(),
+                        Scale = p.GetScale(),
+                        DefaultValueSql = p.GetDefaultValueSql(store),
+                        ComputedSql = p.GetComputedColumnSql(store),
+                        ComputedStored = p.GetIsStored(store) ?? false,
+                        Collation = p.GetCollation(),
+                        Comment = p.GetComment(store),
+                    });
+                }
             }
 
-            var pk = entity.FindPrimaryKey();
+            var pk = root.FindPrimaryKey();
             if (pk is not null)
             {
                 table.PrimaryKey = new PrimaryKeyDto
@@ -305,55 +336,74 @@ internal static class ModelMapper
                 };
             }
 
-            foreach (var fk in entity.GetForeignKeys())
+            var seenFks = new HashSet<string>();
+            foreach (var entity in group)
             {
-                var principal = fk.PrincipalEntityType;
-                var principalTable = principal.GetTableName();
-                if (principalTable is null)
+                foreach (var fk in entity.GetForeignKeys())
                 {
-                    continue;
-                }
-                var principalStore = StoreObjectIdentifier.Table(principalTable, principal.GetSchema());
-
-                table.ForeignKeys.Add(new ForeignKeyDto
-                {
-                    Name = fk.GetConstraintName(store, principalStore)
-                        ?? $"FK_{tableName}_{principalTable}",
-                    Columns = fk.Properties.Select(pp => pp.GetColumnName(store) ?? pp.Name).ToList(),
-                    PrincipalTable = principalTable,
-                    PrincipalSchema = principal.GetSchema(),
-                    PrincipalColumns = fk.PrincipalKey.Properties
-                        .Select(pp => pp.GetColumnName(principalStore) ?? pp.Name).ToList(),
-                    OnDelete = MapDeleteBehavior(fk.DeleteBehavior),
-                });
-            }
-
-            foreach (var ix in entity.GetIndexes())
-            {
-                table.Indexes.Add(new IndexDto
-                {
-                    Name = ix.GetDatabaseName(store) ?? "",
-                    Columns = ix.Properties.Select(pp => pp.GetColumnName(store) ?? pp.Name).ToList(),
-                    IsUnique = ix.IsUnique,
-                    Filter = ix.GetFilter(store),
-                });
-            }
-
-            // Datos sembrados (HasData): clave por nombre de propiedad → se mapea
-            // a nombre de columna para casar con el resto del IR.
-            foreach (var seed in entity.GetSeedData())
-            {
-                var row = new Dictionary<string, object?>();
-                foreach (var p in entity.GetProperties())
-                {
-                    if (seed.TryGetValue(p.Name, out var val))
+                    var principal = fk.PrincipalEntityType;
+                    var principalTable = principal.GetTableName();
+                    if (principalTable is null)
                     {
-                        row[p.GetColumnName(store) ?? p.Name] = val;
+                        continue;
                     }
+                    var principalStore = StoreObjectIdentifier.Table(principalTable, principal.GetSchema());
+                    var name = fk.GetConstraintName(store, principalStore)
+                        ?? $"FK_{tableName}_{principalTable}";
+                    if (!seenFks.Add(name))
+                    {
+                        continue;
+                    }
+                    table.ForeignKeys.Add(new ForeignKeyDto
+                    {
+                        Name = name,
+                        Columns = fk.Properties.Select(pp => pp.GetColumnName(store) ?? pp.Name).ToList(),
+                        PrincipalTable = principalTable,
+                        PrincipalSchema = principal.GetSchema(),
+                        PrincipalColumns = fk.PrincipalKey.Properties
+                            .Select(pp => pp.GetColumnName(principalStore) ?? pp.Name).ToList(),
+                        OnDelete = MapDeleteBehavior(fk.DeleteBehavior),
+                    });
                 }
-                if (row.Count > 0)
+            }
+
+            var seenIx = new HashSet<string>();
+            foreach (var entity in group)
+            {
+                foreach (var ix in entity.GetIndexes())
                 {
-                    table.SeedData.Add(row);
+                    var name = ix.GetDatabaseName(store) ?? "";
+                    if (!seenIx.Add(name))
+                    {
+                        continue;
+                    }
+                    table.Indexes.Add(new IndexDto
+                    {
+                        Name = name,
+                        Columns = ix.Properties.Select(pp => pp.GetColumnName(store) ?? pp.Name).ToList(),
+                        IsUnique = ix.IsUnique,
+                        Filter = ix.GetFilter(store),
+                    });
+                }
+            }
+
+            // Datos sembrados (HasData) de todos los tipos del grupo.
+            foreach (var entity in group)
+            {
+                foreach (var seed in entity.GetSeedData())
+                {
+                    var row = new Dictionary<string, object?>();
+                    foreach (var p in entity.GetProperties())
+                    {
+                        if (seed.TryGetValue(p.Name, out var val))
+                        {
+                            row[p.GetColumnName(store) ?? p.Name] = val;
+                        }
+                    }
+                    if (row.Count > 0)
+                    {
+                        table.SeedData.Add(row);
+                    }
                 }
             }
 

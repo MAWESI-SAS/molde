@@ -11,6 +11,7 @@ public class SampleDbContext : DbContext
 
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();
+    public DbSet<Payment> Payments => Set<Payment>();
 
     // Configuración SOLO por Fluent API (sin data annotations): es justo lo que
     // un analizador estático de C# no podría resolver y que EF sí evalúa.
@@ -28,6 +29,16 @@ public class SampleDbContext : DbContext
                 new Customer { Id = 1, Name = "ACME", Email = "acme@example.com" },
                 new Customer { Id = 2, Name = "Globex", Email = null });
         });
+
+        // TPH: una tabla "Payment" con discriminador para base + derivados.
+        modelBuilder.Entity<Payment>(e =>
+        {
+            e.ToTable("Payment");
+            e.HasKey(x => x.Id).HasName("PK_Payment");
+        });
+        // Registrar los tipos derivados para que EF construya la jerarquía TPH.
+        modelBuilder.Entity<CardPayment>();
+        modelBuilder.Entity<CashPayment>();
 
         modelBuilder.Entity<Order>(e =>
         {

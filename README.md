@@ -72,6 +72,7 @@ Ver [`docs/model-ir.md`](docs/model-ir.md) para el contrato central.
 | **13** | **SQL Server**: columnas computadas `PERSISTED` (round-trip) + full-text best-effort (`raw_objects`/`RawSql`) | ✅ computed vs SQL Server 2022; FTS code-complete |
 | **14** | **SQLite table-rebuild**: `ALTER COLUMN` y alta/baja de FK sobre tablas existentes vía reconstrucción | ✅ verificado (preserva datos) |
 | **15** | Sidecar empaquetable como **`dotnet tool`** (`EFRUST_SIDECAR_CMD`) | ✅ pack + install + ejecución verificados |
+| **16a** | **Herencia TPH**: el sidecar funde base+derivados en una sola tabla (columnas unidas + discriminador) en vez de duplicar | ✅ verificado vs EF real (1 tabla `Payment`) |
 | **16b** | **Seed data (`HasData`)**: sidecar→IR→`INSERT`/`UPDATE`/`DELETE` + `HasData` en scaffold | ✅ extracción verificada vs EF real; diff/SQL unit |
 
 > **Notas Fase 5c:**
