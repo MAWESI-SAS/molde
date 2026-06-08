@@ -45,5 +45,5 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 # The TLS backend is NOT pinned here: it is chosen by the leaf crates' features
 # (tls-rustls by default; tls-native-tls for servers with legacy certificates
 # that rustls rejects). See crates/molde-cli/Cargo.toml.
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "any", "postgres", "sqlite", "mysql"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "any", "postgres", "sqlite", "mysql", "migrate"] }
 time = { version = "0.3" }

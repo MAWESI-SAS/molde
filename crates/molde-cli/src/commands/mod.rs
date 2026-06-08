@@ -1,6 +1,7 @@
 //! CLI subcommand implementations.
 
 pub mod apply;
+pub mod db;
 pub mod fmt;
 pub mod fresh;
 pub mod init_team;

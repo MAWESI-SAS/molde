@@ -16,6 +16,8 @@ use sqlx::{AnyPool, Row};
 use tokio::sync::Mutex;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
+pub mod admin;
+
 const HISTORY_TABLE: &str = "__EFMigrationsHistory";
 
 type MssqlClient = tiberius::Client<Compat<tokio::net::TcpStream>>;

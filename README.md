@@ -84,6 +84,7 @@ molde (CLI, Rust)
 
 | Capability | PostgreSQL | MySQL | SQLite | SQL Server |
 |---|:--:|:--:|:--:|:--:|
+| `db` (create / drop / reset the database) | ✅ | ✅ | ✅ | ✅ (tiberius) |
 | `apply` (apply migrations) | ✅ | ✅ | ✅ | ✅ (tiberius) |
 | `migrate` / `undo` / `status` | ✅ | ✅ | ✅ | ✅ |
 | `pull` (DB → `.model`) | ✅ | ✅ | ✅ | ✅ (tiberius) |
@@ -115,6 +116,11 @@ cargo build -p molde-cli --no-default-features --features tls-native-tls
 ## Commands
 
 ```bash
+# 0. Database lifecycle: create / drop / reset the database itself.
+molde db create --connection "$DATABASE_URL"
+molde db reset  --connection "$DATABASE_URL"   # drop + recreate + apply all migrations
+molde db drop   --connection "$DATABASE_URL"
+
 # 1. Database-first: introspect an existing DB into .model files.
 molde pull --connection "$DATABASE_URL" --out models
 

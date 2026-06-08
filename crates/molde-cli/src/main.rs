@@ -54,6 +54,9 @@ enum Commands {
     /// Rebuild the local database from migrations (roll back all, re-apply).
     Fresh(commands::fresh::FreshArgs),
 
+    /// Database lifecycle: create / drop / reset the database itself.
+    Db(commands::db::DbArgs),
+
     /// List known migrations.
     Status(commands::migrate::StatusArgs),
 
@@ -80,6 +83,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Verify(args) => commands::verify::run(args),
         Commands::Up(args) => commands::up::run(args),
         Commands::Fresh(args) => commands::fresh::run(args),
+        Commands::Db(args) => commands::db::run(args),
         Commands::Status(args) => commands::migrate::status(args),
         Commands::Undo(args) => commands::migrate::undo(args),
         Commands::Fmt(args) => commands::fmt::run(args),

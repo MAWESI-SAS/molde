@@ -11,6 +11,18 @@ the most-evidenced community asks, and a prioritized roadmap for molde that mark
 
 ---
 
+## 0. Scope — molde is a database manager, not an ORM
+
+molde manages the **schema lifecycle** of a database: create/drop the database,
+introspect, migrate, seed, sync, drift-check. It does **not** do runtime data
+access (entity mapping, query builders, change tracking) — that is ORM territory.
+
+So molde's true peers are the **standalone schema/migration managers** — Atlas,
+Flyway, Liquibase, Sqitch, dbmate, goose, golang-migrate, pgroll, Bytebase,
+Skeema, sqldef. The ORMs in the table below (Prisma, EF Core, TypeORM, Drizzle,
+Alembic) are listed for context only; their *migration* sub-systems are
+comparable, but molde does not compete with them as ORMs.
+
 ## 1. Where molde stands
 
 The field splits into two poles:
@@ -78,6 +90,14 @@ the parent branch. **molde already mitigates the first two** (per-entity mergeab
 
 Genuine gaps, ordered by value/feasibility. molde's existing IR + diff +
 snapshot machinery makes the top items unusually cheap.
+
+### ✅ Delivered — `molde db` (database lifecycle)
+`molde db create` / `db drop` / `db reset` manage the **database itself** (not
+just the schema inside it), across all four engines — sqlx's `MigrateDatabase`
+for Postgres/MySQL/SQLite, tiberius against `master` for SQL Server. Closes an
+obvious gap for a database manager (the equivalent of `createdb`/`dropdb` /
+`rails db:create`/`db:reset`); `db reset` = drop + recreate + apply all
+migrations (and seeds).
 
 ### 🥇 P1 — `molde lint` (migration safety analyzer) · impact HIGH · effort MEDIUM
 Run over the IR/diff at PR time and flag, with diagnostic codes:
