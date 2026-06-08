@@ -2,6 +2,7 @@
 //!
 //! Comandos:
 //! - `scaffold`        BD → archivos `.model`
+//! - `fmt`             formatea archivos `.model` a su forma canónica
 //! - `migrations add`  `.model` → migración (diff contra el snapshot)
 //! - `database update` aplica/revierte migraciones contra la BD
 
@@ -27,8 +28,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Genera modelos C# + DbContext desde una base de datos existente (database-first).
+    /// Genera archivos `.model` (EFM) desde una base de datos existente (database-first).
     Scaffold(commands::scaffold::ScaffoldArgs),
+
+    /// Formatea archivos `.model` a su forma canónica.
+    Fmt(commands::fmt::FmtArgs),
 
     /// Operaciones sobre migraciones.
     #[command(subcommand)]
@@ -61,6 +65,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Scaffold(args) => commands::scaffold::run(args),
+        Commands::Fmt(args) => commands::fmt::run(args),
         Commands::Migrations(cmd) => match cmd {
             MigrationsCommands::Add(args) => commands::migrations::add(args),
             MigrationsCommands::List(args) => commands::migrations::list(args),

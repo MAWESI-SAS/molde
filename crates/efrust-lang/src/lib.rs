@@ -15,6 +15,8 @@
 
 mod emit;
 mod error;
+mod fmt;
+mod outline;
 mod parse;
 mod tree;
 mod types;
@@ -22,6 +24,8 @@ mod value;
 
 pub use emit::{emit_database, emit_entity, emit_project};
 pub use error::{EfmError, Result};
+pub use fmt::{format_model, DATABASE_FILE};
+pub use outline::{outline, OutlineItem};
 pub use parse::{parse_database, parse_entity, parse_project, DbGlobals};
 
 /// Un archivo del proyecto de modelos: nombre relativo + contenido.
