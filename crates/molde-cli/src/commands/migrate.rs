@@ -62,7 +62,7 @@ pub fn migrate(args: MigrateArgs) -> anyhow::Result<()> {
     let sp = ui::spinner("reading models and computing the diff");
     let result = (|| {
         let model = load_model_dir(&args.from_models)?;
-        let id = format!("{}_{}", utc_timestamp(), name);
+        let id = next_migration_id(&args.output_dir, &name);
         author::add(&name, &id, &model, &args.output_dir, &snapshot_path)
             .context("creating the migration")
     })();
@@ -174,4 +174,71 @@ fn utc_timestamp() -> String {
         now.minute(),
         now.second(),
     )
+}
+
+/// Build the next migration id, guaranteeing it sorts strictly after every
+/// migration already on disk.
+///
+/// The base is the current UTC second (`yyyyMMddHHmmss`). Migration ids are
+/// sorted lexicographically and that order *is* the apply order, so two
+/// migrations created in the same second (or after a backwards clock jump) would
+/// otherwise sort by name instead of by creation time. To prevent that, the
+/// timestamp is bumped to one past the latest existing migration whenever it
+/// does not already exceed it.
+fn next_migration_id(output_dir: &Path, name: &str) -> String {
+    let candidate: u64 = utc_timestamp().parse().unwrap_or(0);
+    let latest = migration::load_dir(output_dir)
+        .ok()
+        .and_then(|ms| ms.iter().filter_map(|m| timestamp_of(&m.id)).max());
+    let ts = bump_if_needed(candidate, latest);
+    format!("{ts:014}_{name}")
+}
+
+/// Parse the `yyyyMMddHHmmss` timestamp prefix (first 14 chars) of a migration id.
+fn timestamp_of(id: &str) -> Option<u64> {
+    id.get(..14).and_then(|t| t.parse::<u64>().ok())
+}
+
+/// Return `candidate` unless it fails to exceed `latest_existing`, in which case
+/// return `latest_existing + 1` so the new id always sorts last.
+fn bump_if_needed(candidate: u64, latest_existing: Option<u64>) -> u64 {
+    match latest_existing {
+        Some(latest) if candidate <= latest => latest + 1,
+        _ => candidate,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bump_if_needed;
+
+    #[test]
+    fn keeps_candidate_when_strictly_newer() {
+        assert_eq!(
+            bump_if_needed(20260608120001, Some(20260608120000)),
+            20260608120001
+        );
+    }
+
+    #[test]
+    fn bumps_on_same_second_collision() {
+        // Two migrations authored in the same second must not tie.
+        assert_eq!(
+            bump_if_needed(20260608120000, Some(20260608120000)),
+            20260608120001
+        );
+    }
+
+    #[test]
+    fn bumps_on_backwards_clock() {
+        assert_eq!(
+            bump_if_needed(20260608110000, Some(20260608120000)),
+            20260608120001
+        );
+    }
+
+    #[test]
+    fn keeps_candidate_when_no_migrations_exist() {
+        assert_eq!(bump_if_needed(20260608120000, None), 20260608120000);
+    }
 }
