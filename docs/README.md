@@ -3,12 +3,18 @@
 Reference and guides for molde. New here? Start with the
 [project README](../README.md) and the [example walkthrough](../examples/README.md).
 
+## Learn
+
+- **[authoring-models.md](authoring-models.md)** — practical, example-driven
+  guide to writing `.model` files: every feature and how to use it, start to
+  finish. **Begin here if you're writing models.**
+
 ## Reference
 
 - **[cli.md](cli.md)** — complete CLI reference: every command and flag, with
   examples. (Or run `molde <command> --help`.)
-- **[molde-language-spec.md](molde-language-spec.md)** — the `.model` language:
-  syntax, fields, facets, relationships, indexes, seeds, and globals.
+- **[molde-language-spec.md](molde-language-spec.md)** — the precise `.model`
+  language specification: grammar, types, facets, and the full IR mapping.
 - **[model-ir.md](model-ir.md)** — the intermediate representation
   (`molde_core::DatabaseModel`) that the language, readers, and diff all share.
 

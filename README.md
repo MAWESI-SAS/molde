@@ -59,7 +59,9 @@ Indexes come from three places:
 > Relationships → molde indexes them for you. Query/performance indexes → you
 > declare them.
 
-Full specification: [`docs/molde-language-spec.md`](docs/molde-language-spec.md).
+New to writing models? Start with the example-driven
+**[authoring guide](docs/authoring-models.md)**. Full grammar and IR mapping:
+[`docs/molde-language-spec.md`](docs/molde-language-spec.md).
 
 ## Flow
 

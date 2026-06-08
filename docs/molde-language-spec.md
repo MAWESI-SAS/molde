@@ -6,6 +6,10 @@
 > is a **schema layer only**: it manages and versions models, generates
 > migrations, and does scaffolding. Runtime data access is out of scope. There is
 > no C# generation or .NET sidecar.
+>
+> **Want to learn by example instead?** This is the precise reference; for a
+> hands-on, example-driven walkthrough see
+> [authoring-models.md](authoring-models.md).
 
 ---
 
@@ -173,8 +177,8 @@ After `<Col>: <type>[?]`, a sequence of space-separated facets.
 | `default=<sql>` | `default_value_sql` (raw SQL; use quotes if it contains spaces) |
 | `computed=<sql>` | `computed_sql` |
 | `collation=<name>` | `collation` |
-| `column=<db_name>` | physical name if it differs from the property name |
 | `dbtype=<store_type>` | `store_type` (override of the exact native type) |
+| `clr=<type>` | `clr_type` (override the mapped CLR type; advanced, rarely needed) |
 | `comment="<text>"` | column `comment` |
 | `pk=<name>` | simple PK with an explicit name |
 
@@ -412,7 +416,7 @@ raw:
 | `Table.indexes` | `unique` facet or `indexes:` block |
 | `Table.triggers` | `triggers:` |
 | `Table.seed_data` | `seed:` |
-| `Column.name` | field label (physical: `column=`) |
+| `Column.name` | field label |
 | `Column.clr_type` | logical type |
 | `Column.store_type` | raw native type or `dbtype=` |
 | `Column.is_nullable` | `?` suffix |
@@ -438,8 +442,8 @@ are `format_version` (internal) and the table `clr_type` (derived metadata).
 
 - **Canonical** = what the emitter produces (scaffold DB→`.model`): flat columns,
   explicit FKs, explicit indexes, without `owns`/`subtypes`/`enum`.
-- **Sugar** = human authoring shortcuts (`owns`, `subtypes`, `enum[…]`,
-  `has-many`) that expand on parsing. They do **not** survive a re-emit.
+- **Sugar** = human authoring shortcuts (`owns`, `subtypes`, `enum[…]`) that
+  expand on parsing. They do **not** survive a re-emit.
 
 Guarantee: `parse(emit(ir)) == ir` for any IR. `emit(parse(dsl))` produces the
 equivalent canonical form (it may differ textually from the original sugar; like
