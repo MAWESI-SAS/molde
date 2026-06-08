@@ -263,6 +263,10 @@ On every PR:
 4. **Snapshot consistency** — `molde snapshot --check` verifies `snapshot.json`
    equals the serialization of `models/` (no stale snapshot), exiting non-zero if
    it drifted. ✅ *exists today*
+5. **Migration safety** — `molde lint` statically flags destructive changes
+   (drop table/column) and risky ones (NOT NULL without default, unique index,
+   type change, …) without touching a database; non-zero on any destructive
+   finding (`--strict` to fail on warnings too). ✅ *exists today*
 
 On merge to `main`: apply migrations to the **trunk DB** (§8).
 

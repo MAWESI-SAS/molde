@@ -128,6 +128,7 @@ molde pull --connection "$DATABASE_URL" --out models
 molde migrate InitialCreate                  # reads models/, writes migrations/
 molde status                                 # list migrations
 molde undo                                   # remove the latest migration
+molde lint                                   # CI: flag destructive/risky migrations (no DB)
 
 # 3. Apply / roll back migrations against the DB.
 molde apply --connection "$DATABASE_URL"

@@ -39,6 +39,9 @@ enum Commands {
     /// Regenerate (or verify with --check) the migration snapshot from the models.
     Snapshot(commands::snapshot::SnapshotArgs),
 
+    /// Statically check migrations for risky/destructive changes.
+    Lint(commands::lint::LintArgs),
+
     /// Apply pending migrations to the database (or roll back with `--to`).
     Apply(commands::apply::ApplyArgs),
 
@@ -78,6 +81,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Pull(args) => commands::pull::run(args),
         Commands::Migrate(args) => commands::migrate::migrate(args),
         Commands::Snapshot(args) => commands::snapshot::run(args),
+        Commands::Lint(args) => commands::lint::run(args),
         Commands::Apply(args) => commands::apply::run(args),
         Commands::Sync(args) => commands::sync::run(args),
         Commands::Verify(args) => commands::verify::run(args),

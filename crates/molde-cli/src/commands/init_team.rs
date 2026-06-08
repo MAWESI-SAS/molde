@@ -241,6 +241,9 @@ jobs:
       - name: Snapshot matches the models
         run: molde snapshot --check
 
+      - name: Migrations are safe (no destructive/risky changes)
+        run: molde lint
+
       - name: Migrations apply cleanly on a fresh database
         run: molde apply --yes --no-input
 

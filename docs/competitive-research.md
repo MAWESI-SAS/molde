@@ -99,18 +99,18 @@ obvious gap for a database manager (the equivalent of `createdb`/`dropdb` /
 `rails db:create`/`db:reset`); `db reset` = drop + recreate + apply all
 migrations (and seeds).
 
-### 🥇 P1 — `molde lint` (migration safety analyzer) · impact HIGH · effort MEDIUM
-Run over the IR/diff at PR time and flag, with diagnostic codes:
-- **Destructive:** drop table / column / schema.
-- **Data-dependent:** add NOT NULL without default, add UNIQUE index, widen→narrow
-  type — operations that fail or lock on a table with existing rows.
-- **Backward-incompatible:** renames (break the app contract), type changes that
-  rewrite/lock the table.
+### ✅ P1 — `molde lint` (migration safety analyzer) — **done**
+Static analysis over a migration's `up` operations (`molde_core::lint`), no DB
+access — runs in CI on a PR. Findings, with stable codes:
+- **Destructive** (data loss → blocks): `drop-table`, `drop-column`.
+- **Warning** (may fail on existing data / lock the table): `not-null-no-default`,
+  `make-not-null`, `alter-column-type`, `add-unique-index`, `add-foreign-key`.
 
-molde **already has the IR and the diff** (`molde_core::diff::Operation`), so this
-is an analyzer layer over existing data — the highest-ROI next feature. It also
-unblocks P2. *(Atlas's advanced analyzers are now paid, but the core taxonomy and
-the demand are well established — open to replicate.)*
+`molde lint` lints the latest migration (`--all` for every one); exits non-zero on
+any destructive finding, and on warnings too with `--strict`. Renames surface as
+`drop-column` + add (molde doesn't yet detect renames), so the destructive rule
+already covers the backward-incompatible case. Built on the existing IR + diff.
+Unblocks P2.
 
 ### 🥈 P2 — `molde ci` / GitHub Action: plan + warnings as a PR comment · HIGH · MEDIUM
 molde already has `verify --check` and an `init-team` CI template. Add an action

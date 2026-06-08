@@ -11,6 +11,7 @@
 
 pub mod conventions;
 pub mod diff;
+pub mod lint;
 pub mod migration;
 pub mod model;
 pub mod snapshot;
