@@ -21,3 +21,4 @@ scratch/
 
 # scratch local (scaffold de pruebas)
 _scaffold_review/
+sync-*.sql
