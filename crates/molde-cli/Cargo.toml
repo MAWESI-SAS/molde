@@ -16,8 +16,8 @@ path = "src/main.rs"
 # that rustls rejects, build with:
 #   cargo build -p molde-cli --no-default-features --features tls-native-tls
 default = ["tls-rustls"]
-tls-rustls = ["molde-scaffold/tls-rustls", "molde-migrate/tls-rustls"]
-tls-native-tls = ["molde-scaffold/tls-native-tls", "molde-migrate/tls-native-tls"]
+tls-rustls = ["molde-scaffold/tls-rustls", "molde-migrate/tls-rustls", "molde-sync/tls-rustls"]
+tls-native-tls = ["molde-scaffold/tls-native-tls", "molde-migrate/tls-native-tls", "molde-sync/tls-native-tls"]
 
 [dependencies]
 molde-core = { workspace = true }
@@ -26,6 +26,7 @@ molde-migrate = { workspace = true }
 molde-scaffold = { workspace = true }
 molde-design = { workspace = true }
 molde-lang = { workspace = true }
+molde-sync = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

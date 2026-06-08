@@ -1,0 +1,20 @@
+[package]
+name = "molde-sync"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+description = "molde — additive live database synchronization (source → target)"
+
+[features]
+default = ["tls-rustls"]
+tls-rustls = ["sqlx/tls-rustls"]
+# OpenSSL backend: more tolerant of legacy X.509 v1 certificates.
+tls-native-tls = ["sqlx/tls-native-tls"]
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = "0.1"
+sqlx = { workspace = true }
+tokio = { workspace = true }

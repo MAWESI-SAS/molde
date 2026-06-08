@@ -9,6 +9,7 @@ members = [
     "crates/molde-design",
     "crates/molde-lang",
     "crates/molde-lsp",
+    "crates/molde-sync",
 ]
 
 [workspace.package]
@@ -30,6 +31,7 @@ molde-lang = { path = "crates/molde-lang" }
 molde-migrate = { path = "crates/molde-migrate", default-features = false }
 molde-scaffold = { path = "crates/molde-scaffold", default-features = false }
 molde-design = { path = "crates/molde-design" }
+molde-sync = { path = "crates/molde-sync", default-features = false }
 
 # External
 clap = { version = "4.5", features = ["derive", "env"] }
