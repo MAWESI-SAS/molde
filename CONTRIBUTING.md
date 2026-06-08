@@ -9,7 +9,7 @@ By participating you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md)
 ## Getting started
 
 molde is a standard Cargo workspace. You need a recent stable Rust toolchain
-(see [`rust-toolchain.toml`](rust-toolchain.toml); MSRV is **1.75**) and a C
+(see [`rust-toolchain.toml`](rust-toolchain.toml); MSRV is **1.88**) and a C
 compiler (for the bundled SQLite). TLS uses rustls, so OpenSSL is **not**
 required for the default build.
 

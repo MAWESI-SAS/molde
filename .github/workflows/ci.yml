@@ -32,3 +32,28 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+  msrv:
+    name: MSRV (1.88)
+    runs-on: ubuntu-latest
+    # The advertised minimum supported Rust version must keep compiling.
+    # RUSTUP_TOOLCHAIN overrides rust-toolchain.toml (which pins `stable` for
+    # day-to-day work) so this job really exercises 1.88.
+    env:
+      RUSTUP_TOOLCHAIN: "1.88.0"
+      RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust 1.88
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+
+      - name: Check
+        run: cargo check --workspace --locked

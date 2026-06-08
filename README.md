@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/MAWESI-SAS/molde/actions/workflows/ci.yml/badge.svg)](https://github.com/MAWESI-SAS/molde/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-![MSRV](https://img.shields.io/badge/rustc-1.75%2B-orange.svg)
+![MSRV](https://img.shields.io/badge/rustc-1.88%2B-orange.svg)
 
 A **Rust database schema** tool built on top of **molde**, a custom, declarative,
 human-readable model language (TOON/YAML style). molde does **scaffolding**
