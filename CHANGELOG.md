@@ -32,5 +32,5 @@ Initial public release.
 - Team workflow tooling (`init-team`) and a VS Code extension with a language
   server for `.model` files.
 
-[Unreleased]: https://github.com/mawesi/molde/compare/v0.0.1...HEAD
-[0.0.1]: https://github.com/mawesi/molde/releases/tag/v0.0.1
+[Unreleased]: https://github.com/MAWESI-SAS/molde/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/MAWESI-SAS/molde/releases/tag/v0.0.1

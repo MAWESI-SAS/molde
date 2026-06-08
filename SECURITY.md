@@ -12,7 +12,7 @@ separately — please upgrade to the latest version.
 
 Instead, use one of:
 
-- GitHub's [private vulnerability reporting](https://github.com/mawesi/molde/security/advisories/new)
+- GitHub's [private vulnerability reporting](https://github.com/MAWESI-SAS/molde/security/advisories/new)
   ("Report a vulnerability" under the *Security* tab), or
 - email **mauricio@mawesi.net** with the details.
 

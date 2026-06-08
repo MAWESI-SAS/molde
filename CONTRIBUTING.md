@@ -14,7 +14,7 @@ compiler (for the bundled SQLite). TLS uses rustls, so OpenSSL is **not**
 required for the default build.
 
 ```bash
-git clone https://github.com/mawesi/molde
+git clone https://github.com/MAWESI-SAS/molde
 cd molde
 cargo build
 cargo test --workspace
@@ -73,7 +73,7 @@ Architecture notes and the language spec live in [`docs/`](docs/).
 
 ## Reporting bugs and requesting features
 
-Use the [issue templates](https://github.com/mawesi/molde/issues/new/choose). A
+Use the [issue templates](https://github.com/MAWESI-SAS/molde/issues/new/choose). A
 minimal reproduction (a small `.model` file or a connection-less command) helps a
 lot. For anything security-related, see [SECURITY.md](SECURITY.md) — please do
 **not** open a public issue.
