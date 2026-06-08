@@ -116,7 +116,12 @@ impl SqlGenerator for PostgresGenerator {
             "System.Boolean" => "boolean",
             "System.Single" => "real",
             "System.Double" => "double precision",
-            "System.Decimal" => "numeric",
+            "System.Decimal" => match (column.precision, column.scale) {
+                (Some(p), Some(s)) => return Ok(format!("numeric({p},{s})")),
+                (Some(p), None) => return Ok(format!("numeric({p})")),
+                // `numeric` sin precisión = precisión arbitraria (válido en PG).
+                _ => "numeric",
+            },
             "System.DateTime" => "timestamp without time zone",
             "System.DateTimeOffset" => "timestamp with time zone",
             "System.Guid" => "uuid",

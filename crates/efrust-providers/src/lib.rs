@@ -139,6 +139,41 @@ mod tests {
     }
 
     #[test]
+    fn postgres_decimal_honra_precision_y_scale() {
+        // Un Decimal lógico (store_type None) con precision/scale debe emitir
+        // `numeric(p,s)`; sin ellos, `numeric` (precisión arbitraria). Regresión:
+        // el flujo model-first canonicaliza el store_type a None y deja solo
+        // precision/scale, así que el provider DEBE reconstruir la precisión.
+        let gen = PostgresGenerator::new();
+        let mut total = name_col();
+        total.name = "Total".into();
+        total.clr_type = Some("System.Decimal".into());
+        total.max_length = None;
+        total.precision = Some(18);
+        total.scale = Some(2);
+        let op = Operation::AddColumn {
+            schema: None,
+            table: "Order".into(),
+            column: total.clone(),
+        };
+        assert!(gen.emit(&op).unwrap().join("").contains("numeric(18,2)"));
+
+        let mut bare = total.clone();
+        bare.precision = None;
+        bare.scale = None;
+        let sql = gen
+            .emit(&Operation::AddColumn {
+                schema: None,
+                table: "Order".into(),
+                column: bare,
+            })
+            .unwrap()
+            .join("");
+        assert!(sql.contains("numeric"));
+        assert!(!sql.contains("numeric("));
+    }
+
+    #[test]
     fn sqlite_create_table() {
         let gen = SqliteGenerator::new();
         let sql = gen
