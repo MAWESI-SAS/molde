@@ -470,7 +470,7 @@ block       = "|" NEWLINE INDENT { TEXT } DEDENT ;
 
 ---
 
-## 19. Ejemplo completo (SampleModel)
+## 19. Ejemplo completo (ver `examples/models/`)
 
 `database.model`
 ```

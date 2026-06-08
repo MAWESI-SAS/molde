@@ -1,5 +1,5 @@
 # Dos servicios:
-#   app → contenedor de desarrollo (Rust + .NET 9), donde vive VS Code / Claude.
+#   app → contenedor de desarrollo (Rust), donde vive VS Code / Claude.
 #   db  → PostgreSQL local y desechable para probar scaffolding y migraciones.
 # SQLite no necesita servicio (es basado en archivo).
 services:
@@ -15,10 +15,8 @@ services:
       - efrust-cargo-cache:/usr/local/cargo/registry
     command: sleep infinity
     environment:
-      # Formato sqlx (lo consume el CLI en Rust).
+      # Cadena de conexión que consume el CLI de efrust (formato sqlx).
       DATABASE_URL: postgres://efrust:efrust@db:5432/efrust_dev
-      # Formato .NET (lo consume el sidecar / dotnet-ef) — misma convención que MAWESI.
-      DATABASE_CONNECTION_STRING: Host=db;Port=5432;Database=efrust_dev;Username=efrust;Password=efrust
     depends_on:
       db:
         condition: service_healthy

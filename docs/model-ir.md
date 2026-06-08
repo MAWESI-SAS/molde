@@ -6,35 +6,50 @@ los providers) lo procesa.
 
 ```
                     ┌──────────────────────────┐
-   Sidecar .NET ───▶│                          │
+   EFM .model ─────▶│                          │
    (model-first)    │      DatabaseModel       │──▶ diff() ──▶ [Operation] ──▶ SqlGenerator ──▶ SQL
                     │        (Model IR)        │
-   Scaffolder ─────▶│                          │──▶ plantillas .cs (scaffold)
+   Scaffolder ─────▶│                          │──▶ emit() ──▶ archivos .model (scaffold)
    (db-first)       └──────────────────────────┘
 ```
 
-Modela el lado **relacional** (tablas/columnas), no el conceptual (entidades
-CLR). Esto es deliberado: las migraciones operan sobre el esquema, y mantener el
-IR relacional lo hace independiente de las sutilezas del modelo de objetos de EF.
+Modela el lado **relacional** (tablas/columnas), no el conceptual. Esto es
+deliberado: las migraciones operan sobre el esquema, y mantener el IR relacional
+lo hace independiente de las sutilezas de cualquier modelo de objetos.
 
 ## Tipos (ver `crates/efrust-core/src/model.rs`)
 
-- `DatabaseModel` — raíz: `format_version`, `product_version`, `default_schema`, `tables[]`.
-- `Table` — `name`, `schema?`, `clr_type?`, `columns[]`, `primary_key?`, `foreign_keys[]`, `indexes[]`.
+- `DatabaseModel` — raíz: `format_version`, `product_version`, `default_schema`,
+  `tables[]`, `functions[]`, `extensions[]`, `raw_objects[]`.
+- `Table` — `name`, `schema?`, `clr_type?`, `comment?`, `columns[]`,
+  `primary_key?`, `foreign_keys[]`, `indexes[]`, `triggers[]`, `seed_data[]`.
 - `Column` — `name`, `store_type?`, `clr_type?`, `is_nullable`, `is_identity`,
   facetas (`max_length`, `precision`, `scale`), `default_value_sql?`,
-  `computed_sql?`, `collation?`.
-- `PrimaryKey`, `ForeignKey` (con `ReferentialAction`), `Index`.
+  `computed_sql?`, `computed_stored`, `collation?`, `comment?`.
+- `PrimaryKey`, `ForeignKey` (con `ReferentialAction`), `Index`, `Trigger`,
+  `DbFunction`.
 
 ### `store_type` vs `clr_type`
 
-- `clr_type` es el tipo .NET de origen (`System.String`). Siempre presente desde
-  el sidecar/scaffolder.
+- `clr_type` es el tipo lógico de origen (`System.String`). Lo aporta el parser
+  de EFM (al leer un tipo lógico del `.model`) o el scaffolder (al leer la BD).
 - `store_type` es el tipo del motor (`character varying(200)`). Es **opcional**:
-  si viene explícito (porque el usuario lo fijó con `HasColumnType`), el provider
-  lo respeta tal cual; si no, el provider lo **deriva** de `clr_type` + facetas.
+  si viene explícito (el `.model` lo fijó con `dbtype=`), el provider lo respeta
+  tal cual; si no, el provider lo **deriva** de `clr_type` + facetas al aplicar.
 
-Esto da fidelidad sin obligar al sidecar a conocer cada dialecto.
+Esto da fidelidad sin obligar a cada `.model` a conocer cada dialecto. El
+scaffolder canonicaliza los `store_type` convencionales a `None`
+(`canonicalize_for_models`), dejando solo lo exótico (jsonb, vector, tsvector…).
+
+## El lenguaje EFM
+
+El productor model-first es el lenguaje **EFM** (`.model`, una entidad por
+archivo, estilo indentado). La crate `efrust-lang` garantiza el round-trip
+`parse(emit(ir)) == ir`. Ver `docs/efm-language-spec.md` para el contrato del
+lenguaje (léxico, secciones, tipos, facetas, azúcar y mapeo IR↔EFM).
+
+> Histórico: en versiones previas el productor model-first era un sidecar .NET
+> que serializaba EF Core a JSON. Se retiró por completo; efrust es 100% Rust.
 
 ## Snapshot
 
@@ -45,25 +60,24 @@ el estado del último migrado. `migrations add` hace `diff(snapshot, modelo_actu
   estables y los snapshots no generen ruido por reordenamientos.
 - `format_version` permite migrar snapshots antiguos ante cambios incompatibles.
 
-## Contrato con el sidecar
-
-El JSON que emite `efrust-sidecar` debe deserializar 1:1 en `DatabaseModel`. Los
-DTOs en `sidecar/EfRust.Sidecar/Program.cs` usan `[JsonPropertyName]` en
-snake_case para casar con `serde`. **Cualquier cambio en el IR debe replicarse en
-ambos lados** (test de ida y vuelta previsto en Fase 3).
-
 ## Estado del differ (`diff.rs`)
+
+El diff emite operaciones en un orden seguro frente a dependencias (drop de
+FKs/índices → create tablas → alterar columnas → add FKs/índices → drop tablas).
 
 | Caso | Estado |
 |---|---|
-| Crear/eliminar tabla | ✅ Fase 0 |
-| Añadir/eliminar/alterar columna | ✅ Fase 0 |
-| Detección de renombrados (tabla/columna) | ⬜ Fase 4 (hoy = drop+add) |
-| FKs e índices en el diff | ⬜ Fase 4 |
-| Orden por dependencias (topológico) | ⬜ Fase 4 |
-| Seed data (`HasData`) | ⬜ Fase 5 |
+| Crear/eliminar tabla | ✅ |
+| Añadir/eliminar/alterar columna | ✅ |
+| FKs e índices en el diff | ✅ |
+| Triggers, funciones y extensiones | ✅ |
+| Seed data (`InsertData`/`UpdateData`/`DeleteData`) | ✅ |
+| Rebuild de tablas (SQLite) ante `ALTER` no soportado | ✅ |
+| Detección de renombrados (tabla/columna) | ⬜ (hoy = drop+add) |
 
-## Casos avanzados pendientes (Fase 5)
+## Azúcar de modelado soportada (en EFM)
 
-Owned types, herencia (TPH/TPT/TPC), value converters, shadow properties,
-concurrency tokens, columnas computadas, many-to-many con skip navigations.
+Owned types (`owns`), herencia TPH (`subtypes`/`discriminator`), enums
+(`enum[…]`) y columnas computadas (`computed=`, `stored`) se expanden al parsear
+el `.model`. Pendientes: value converters, shadow properties, concurrency
+tokens, many-to-many con skip navigations.

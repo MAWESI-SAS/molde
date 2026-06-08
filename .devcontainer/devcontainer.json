@@ -9,8 +9,7 @@
             "extensions": [
                 "rust-lang.rust-analyzer",
                 "tamasfe.even-better-toml",
-                "vadimcn.vscode-lldb",
-                "ms-dotnettools.csharp"
+                "vadimcn.vscode-lldb"
             ],
             "settings": {
                 "rust-analyzer.check.command": "clippy",
