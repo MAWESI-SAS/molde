@@ -63,6 +63,8 @@ molde (CLI, Rust)
 | `migrate` / `undo` / `status` | ✅ | ✅ | ✅ | ✅ |
 | `pull` (DB → `.model`) | ✅ | ✅ | ✅ | ✅ (tiberius) |
 | `sync` (additive live DB → DB) | ✅ | ✅ | ✅ | ✅ (tiberius) |
+| `verify` (DB ⇄ model drift) | ✅ | ✅ | ✅ | ✅ (tiberius) |
+| `up` / `fresh` (catch up / rebuild) | ✅ | ✅ | ✅ | ✅ |
 | Search / full-text (pull + round-trip) | ✅ pgvector+tsvector+triggers | ✅ FULLTEXT+generated | — | ✅ computed PERSISTED · FTS best-effort |
 
 > SQLite: FKs are declared inline in `CREATE TABLE`; column type changes and
@@ -100,7 +102,21 @@ molde undo                                   # remove the latest migration
 molde apply --connection "$DATABASE_URL"
 molde apply --connection "$DATABASE_URL" --to 0               # roll back everything
 molde apply --connection "$DATABASE_URL" --to InitialCreate
+
+# 4. Snapshot, drift check, sync, daily catch-up, rebuild.
+molde snapshot                               # regenerate snapshot.json from models/
+molde snapshot --check                       # CI: fail if the snapshot is stale
+molde verify --connection "$DATABASE_URL" --check        # fail if the DB drifts from the model
+molde sync --source "$TRUNK_DB" --target "$DATABASE_URL"  # additive live DB → DB
+molde up --connection "$DATABASE_URL"        # apply pending migrations + drift report
+molde fresh --connection "$DATABASE_URL"     # roll back all + re-apply (rebuild)
 ```
+
+For a large team where everyone runs their own local database, see
+[`docs/team-database-workflow.md`](docs/team-database-workflow.md): the `.model`
+files in git are the source of truth, `molde init-team` installs a snapshot merge
+driver so concurrent migrations don't conflict, and `molde sync`/`up` keep each
+local DB current.
 
 Run a command with no arguments and it prompts for what's missing (migration name,
 connection); `apply` confirms before touching the database. Use `--yes` to skip the
