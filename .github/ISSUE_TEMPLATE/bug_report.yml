@@ -1,0 +1,50 @@
+name: Bug report
+description: Report something that isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug! For security issues, please follow
+        [SECURITY.md](../../SECURITY.md) instead of opening a public issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A minimal `.model` file or the exact `molde` command(s) you ran.
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Database engine
+      options:
+        - PostgreSQL
+        - MySQL
+        - SQLite
+        - SQL Server
+        - Not engine-specific
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: molde version / commit
+      description: Output of `molde --version`, or the commit hash.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. Ubuntu 24.04, macOS 14, Windows 11
+    validations:
+      required: true

@@ -1,15 +1,16 @@
 # Rust
 /target
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock IS committed: molde ships a binary, so we pin the exact
+# dependency graph for reproducible builds.
 
-# .NET sidecar
+# .NET sidecar (legacy, no longer part of the build)
 [Bb]in/
 [Oo]bj/
 *.user
 nupkg/
 
-# Editor
+# Editors
 .idea/
 .vscode/
 *.swp
@@ -18,7 +19,9 @@ nupkg/
 .env
 *.local
 scratch/
-
-# scratch local (scaffold de pruebas)
 _scaffold_review/
 sync-*.sql
+
+# Internal development artifacts (not part of the public project)
+handoffs/
+.claude/
