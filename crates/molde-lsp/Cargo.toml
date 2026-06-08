@@ -1,0 +1,20 @@
+[package]
+name = "molde-lsp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+description = "Language server para el lenguaje de modelos molde (.model)"
+
+[[bin]]
+name = "molde-lsp"
+path = "src/main.rs"
+
+[dependencies]
+molde-lang = { workspace = true }
+molde-core = { workspace = true }
+tower-lsp = "0.20"
+tokio = { workspace = true, features = ["io-std", "rt-multi-thread", "macros"] }
+dashmap = "6"
+serde_json = { workspace = true }

@@ -1,6 +1,6 @@
 # Base: imagen devcontainer oficial de Rust (trae la toolchain stable + clippy/
 # rustfmt y el usuario no-root `vscode`). Encima añadimos las dependencias
-# nativas que necesita sqlx. efrust es 100% Rust: no hay .NET.
+# nativas que necesita sqlx. molde es 100% Rust: no hay .NET.
 FROM mcr.microsoft.com/devcontainers/rust:1-bookworm
 
 # --- Dependencias nativas para compilar las crates de Rust (sqlx, libssl) ---

@@ -1,12 +1,12 @@
 # Model IR — Representación Intermedia
 
-El **Model IR** es el contrato central de efrust. Toda la herramienta gira en
+El **Model IR** es el contrato central de molde. Toda la herramienta gira en
 torno a él: distintos productores lo generan y un único consumidor (el diff +
 los providers) lo procesa.
 
 ```
                     ┌──────────────────────────┐
-   EFM .model ─────▶│                          │
+   molde .model ─────▶│                          │
    (model-first)    │      DatabaseModel       │──▶ diff() ──▶ [Operation] ──▶ SqlGenerator ──▶ SQL
                     │        (Model IR)        │
    Scaffolder ─────▶│                          │──▶ emit() ──▶ archivos .model (scaffold)
@@ -17,7 +17,7 @@ Modela el lado **relacional** (tablas/columnas), no el conceptual. Esto es
 deliberado: las migraciones operan sobre el esquema, y mantener el IR relacional
 lo hace independiente de las sutilezas de cualquier modelo de objetos.
 
-## Tipos (ver `crates/efrust-core/src/model.rs`)
+## Tipos (ver `crates/molde-core/src/model.rs`)
 
 - `DatabaseModel` — raíz: `format_version`, `product_version`, `default_schema`,
   `tables[]`, `functions[]`, `extensions[]`, `raw_objects[]`.
@@ -32,7 +32,7 @@ lo hace independiente de las sutilezas de cualquier modelo de objetos.
 ### `store_type` vs `clr_type`
 
 - `clr_type` es el tipo lógico de origen (`System.String`). Lo aporta el parser
-  de EFM (al leer un tipo lógico del `.model`) o el scaffolder (al leer la BD).
+  de molde (al leer un tipo lógico del `.model`) o el scaffolder (al leer la BD).
 - `store_type` es el tipo del motor (`character varying(200)`). Es **opcional**:
   si viene explícito (el `.model` lo fijó con `dbtype=`), el provider lo respeta
   tal cual; si no, el provider lo **deriva** de `clr_type` + facetas al aplicar.
@@ -41,15 +41,15 @@ Esto da fidelidad sin obligar a cada `.model` a conocer cada dialecto. El
 scaffolder canonicaliza los `store_type` convencionales a `None`
 (`canonicalize_for_models`), dejando solo lo exótico (jsonb, vector, tsvector…).
 
-## El lenguaje EFM
+## El lenguaje molde
 
-El productor model-first es el lenguaje **EFM** (`.model`, una entidad por
-archivo, estilo indentado). La crate `efrust-lang` garantiza el round-trip
-`parse(emit(ir)) == ir`. Ver `docs/efm-language-spec.md` para el contrato del
-lenguaje (léxico, secciones, tipos, facetas, azúcar y mapeo IR↔EFM).
+El productor model-first es el lenguaje **molde** (`.model`, una entidad por
+archivo, estilo indentado). La crate `molde-lang` garantiza el round-trip
+`parse(emit(ir)) == ir`. Ver `docs/molde-language-spec.md` para el contrato del
+lenguaje (léxico, secciones, tipos, facetas, azúcar y mapeo IR↔molde).
 
 > Histórico: en versiones previas el productor model-first era un sidecar .NET
-> que serializaba EF Core a JSON. Se retiró por completo; efrust es 100% Rust.
+> que serializaba EF Core a JSON. Se retiró por completo; molde es 100% Rust.
 
 ## Snapshot
 
@@ -75,7 +75,7 @@ FKs/índices → create tablas → alterar columnas → add FKs/índices → dro
 | Rebuild de tablas (SQLite) ante `ALTER` no soportado | ✅ |
 | Detección de renombrados (tabla/columna) | ⬜ (hoy = drop+add) |
 
-## Azúcar de modelado soportada (en EFM)
+## Azúcar de modelado soportada (en molde)
 
 Owned types (`owns`), herencia TPH (`subtypes`/`discriminator`), enums
 (`enum[…]`) y columnas computadas (`computed=`, `stored`) se expanden al parsear

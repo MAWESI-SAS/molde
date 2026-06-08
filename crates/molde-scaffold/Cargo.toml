@@ -1,0 +1,34 @@
+[package]
+name = "molde-scaffold"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+description = "Database-first: lectura de esquema y emisión de archivos .model"
+
+[features]
+default = ["tls-rustls"]
+tls-rustls = ["sqlx/tls-rustls"]
+# Backend OpenSSL: más tolerante con certificados X.509 v1 (servidores legacy).
+tls-native-tls = ["sqlx/tls-native-tls"]
+
+[dependencies]
+molde-core = { workspace = true }
+molde-providers = { workspace = true }
+molde-lang = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true, features = ["net", "sync"] }
+# SQL Server (TDS) para lectura de esquema.
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+
+[dev-dependencies]
+molde-core = { workspace = true }
+molde-providers = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true, features = ["net", "sync", "rt", "macros", "rt-multi-thread"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
+tokio-util = { version = "0.7", features = ["compat"] }

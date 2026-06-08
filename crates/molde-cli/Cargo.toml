@@ -1,0 +1,34 @@
+[package]
+name = "molde-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+description = "CLI estilo `dotnet ef` implementado en Rust"
+
+[[bin]]
+name = "molde"
+path = "src/main.rs"
+
+[features]
+# Backend TLS de sqlx. Por defecto rustls; para servidores con certificados
+# X.509 v1 que rustls rechaza, compilar con:
+#   cargo build -p molde-cli --no-default-features --features tls-native-tls
+default = ["tls-rustls"]
+tls-rustls = ["molde-scaffold/tls-rustls", "molde-migrate/tls-rustls"]
+tls-native-tls = ["molde-scaffold/tls-native-tls", "molde-migrate/tls-native-tls"]
+
+[dependencies]
+molde-core = { workspace = true }
+molde-providers = { workspace = true }
+molde-migrate = { workspace = true }
+molde-scaffold = { workspace = true }
+molde-design = { workspace = true }
+molde-lang = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+time = { workspace = true }

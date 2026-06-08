@@ -1,0 +1,93 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "molde",
+  "scopeName": "source.molde",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#block-scalar" },
+    { "include": "#entity-header" },
+    { "include": "#section" },
+    { "include": "#inline-key" },
+    { "include": "#facet-assign" },
+    { "include": "#facet-flag" },
+    { "include": "#sugar" },
+    { "include": "#type" },
+    { "include": "#property" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#constant" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.molde"
+    },
+    "string": {
+      "name": "string.quoted.double.molde",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.molde" }
+      ]
+    },
+    "block-scalar": {
+      "match": "(\\|)\\s*$",
+      "captures": { "1": { "name": "keyword.operator.block-scalar.molde" } }
+    },
+    "entity-header": {
+      "match": "^(?=\\S)([A-Za-z_][A-Za-z0-9_]*)\\b",
+      "captures": { "1": { "name": "entity.name.type.class.molde" } }
+    },
+    "section": {
+      "match": "^\\s*(fields|key|belongs-to|indexes|triggers|seed|clr|schema|comment|discriminator|subtypes|extensions|functions|raw|product-version)\\s*(:)",
+      "captures": {
+        "1": { "name": "keyword.control.section.molde" },
+        "2": { "name": "punctuation.separator.key-value.molde" }
+      }
+    },
+    "inline-key": {
+      "match": "\\b(fk|references|onDelete|on|unique|filter|method|operators|expression|timing|events|function|sql|name)\\s*(:)",
+      "captures": {
+        "1": { "name": "support.type.property-name.molde" },
+        "2": { "name": "punctuation.separator.key-value.molde" }
+      }
+    },
+    "facet-assign": {
+      "match": "\\b(pk|maxlen|precision|default|computed|collation|dbtype|clr|comment|as|name)\\s*(=)",
+      "captures": {
+        "1": { "name": "variable.parameter.facet.molde" },
+        "2": { "name": "keyword.operator.assignment.molde" }
+      }
+    },
+    "facet-flag": {
+      "match": "\\b(pk|identity|unique|stored)\\b",
+      "name": "storage.modifier.molde"
+    },
+    "sugar": {
+      "match": "\\b(owns|enum)\\b",
+      "name": "keyword.other.sugar.molde"
+    },
+    "type": {
+      "match": "\\b(int|bigint|smallint|tinyint|long|short|byte|string|text|bool|boolean|decimal|numeric|money|float|double|real|datetime|datetimeoffset|date|time|timespan|guid|uuid|bytes|binary|tsvector|vector|json|jsonb|char)\\b(\\?)?",
+      "captures": {
+        "1": { "name": "support.type.primitive.molde" },
+        "2": { "name": "keyword.operator.nullable.molde" }
+      }
+    },
+    "property": {
+      "match": "^\\s*-?\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)",
+      "captures": {
+        "1": { "name": "variable.other.property.molde" },
+        "2": { "name": "punctuation.separator.key-value.molde" }
+      }
+    },
+    "number": {
+      "match": "\\b\\d+(\\.\\d+)?\\b",
+      "name": "constant.numeric.molde"
+    },
+    "constant": {
+      "match": "\\b(true|false)\\b|(~)",
+      "name": "constant.language.molde"
+    }
+  }
+}

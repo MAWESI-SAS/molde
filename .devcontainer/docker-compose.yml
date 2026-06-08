@@ -7,45 +7,45 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: efrust-dev
+    container_name: molde-dev
     volumes:
       # Monta la raíz del repo en la ruta estándar de devcontainers.
       - ..:/workspaces/EF_RUST:cached
       # Cache persistente de cargo entre rebuilds.
-      - efrust-cargo-cache:/usr/local/cargo/registry
+      - molde-cargo-cache:/usr/local/cargo/registry
     command: sleep infinity
     environment:
-      # Cadena de conexión que consume el CLI de efrust (formato sqlx).
-      DATABASE_URL: postgres://efrust:efrust@db:5432/efrust_dev
+      # Cadena de conexión que consume el CLI de molde (formato sqlx).
+      DATABASE_URL: postgres://molde:molde@db:5432/molde_dev
     depends_on:
       db:
         condition: service_healthy
     networks:
-      - efrust-net
+      - molde-net
 
   db:
     image: postgres:17-bookworm
-    container_name: efrust-postgres
+    container_name: molde-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: efrust
-      POSTGRES_PASSWORD: efrust
-      POSTGRES_DB: efrust_dev
+      POSTGRES_USER: molde
+      POSTGRES_PASSWORD: molde
+      POSTGRES_DB: molde_dev
     volumes:
-      - efrust-pgdata:/var/lib/postgresql/data
+      - molde-pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U efrust -d efrust_dev"]
+      test: ["CMD-SHELL", "pg_isready -U molde -d molde_dev"]
       interval: 5s
       timeout: 5s
       retries: 10
     networks:
-      - efrust-net
+      - molde-net
 
 volumes:
-  efrust-pgdata:
-  efrust-cargo-cache:
+  molde-pgdata:
+  molde-cargo-cache:
 
 networks:
-  efrust-net:
+  molde-net:

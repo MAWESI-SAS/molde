@@ -1,5 +1,5 @@
 {
-    "name": "efrust",
+    "name": "molde",
     "dockerComposeFile": "docker-compose.yml",
     "service": "app",
     "workspaceFolder": "/workspaces/EF_RUST",

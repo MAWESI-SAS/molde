@@ -1,14 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/efrust-cli",
-    "crates/efrust-core",
-    "crates/efrust-providers",
-    "crates/efrust-migrate",
-    "crates/efrust-scaffold",
-    "crates/efrust-design",
-    "crates/efrust-lang",
-    "crates/efrust-lsp",
+    "crates/molde-cli",
+    "crates/molde-core",
+    "crates/molde-providers",
+    "crates/molde-migrate",
+    "crates/molde-scaffold",
+    "crates/molde-design",
+    "crates/molde-lang",
+    "crates/molde-lsp",
 ]
 
 [workspace.package]
@@ -21,15 +21,15 @@ repository = ""
 
 [workspace.dependencies]
 # Internal crates
-efrust-core = { path = "crates/efrust-core" }
-efrust-providers = { path = "crates/efrust-providers" }
-efrust-lang = { path = "crates/efrust-lang" }
-# default-features=false para que el binario (efrust-cli) elija el backend TLS
+molde-core = { path = "crates/molde-core" }
+molde-providers = { path = "crates/molde-providers" }
+molde-lang = { path = "crates/molde-lang" }
+# default-features=false para que el binario (molde-cli) elija el backend TLS
 # de sqlx vía sus propias features (tls-rustls por defecto / tls-native-tls).
 # Los tests de cada crate igual activan su default al construirse como target.
-efrust-migrate = { path = "crates/efrust-migrate", default-features = false }
-efrust-scaffold = { path = "crates/efrust-scaffold", default-features = false }
-efrust-design = { path = "crates/efrust-design" }
+molde-migrate = { path = "crates/molde-migrate", default-features = false }
+molde-scaffold = { path = "crates/molde-scaffold", default-features = false }
+molde-design = { path = "crates/molde-design" }
 
 # External
 clap = { version = "4.5", features = ["derive", "env"] }
@@ -42,6 +42,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 # El backend TLS NO se fija aquí: lo eligen las features de los crates hoja
 # (tls-rustls por defecto; tls-native-tls para servidores con certificados
-# legacy que rustls rechaza). Ver crates/efrust-cli/Cargo.toml.
+# legacy que rustls rechaza). Ver crates/molde-cli/Cargo.toml.
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "any", "postgres", "sqlite", "mysql"] }
 time = { version = "0.3" }

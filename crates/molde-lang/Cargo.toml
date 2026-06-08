@@ -1,0 +1,13 @@
+[package]
+name = "molde-lang"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+description = "molde — lenguaje de modelos de molde: parser y emitter (texto .model ↔ IR)"
+
+[dependencies]
+molde-core = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

@@ -1,9 +1,9 @@
 {
-  "name": "efm-language",
-  "displayName": "EFM — efrust models",
-  "description": "Soporte de lenguaje para archivos .model (EFM): resaltado, formateo, navegación y dependencias.",
+  "name": "molde-language",
+  "displayName": "molde — lenguaje de modelos",
+  "description": "Soporte de lenguaje para archivos .model (molde): resaltado, formateo, navegación y dependencias.",
   "version": "0.0.2",
-  "publisher": "efrust",
+  "publisher": "molde",
   "license": "MIT",
   "engines": {
     "vscode": "^1.75.0"
@@ -13,43 +13,43 @@
     "Formatters"
   ],
   "activationEvents": [
-    "onLanguage:efm"
+    "onLanguage:molde"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
       {
-        "id": "efm",
+        "id": "molde",
         "aliases": [
-          "EFM",
-          "efrust model"
+          "molde",
+          "molde model"
         ],
         "extensions": [
           ".model"
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./icons/efm.svg",
-          "dark": "./icons/efm.svg"
+          "light": "./icons/molde.svg",
+          "dark": "./icons/molde.svg"
         }
       }
     ],
     "grammars": [
       {
-        "language": "efm",
-        "scopeName": "source.efm",
-        "path": "./syntaxes/efm.tmLanguage.json"
+        "language": "molde",
+        "scopeName": "source.molde",
+        "path": "./syntaxes/molde.tmLanguage.json"
       }
     ],
     "configuration": {
-      "title": "EFM",
+      "title": "molde",
       "properties": {
-        "efm.server.path": {
+        "molde.server.path": {
           "type": "string",
-          "default": "efrust-lsp",
-          "description": "Ruta al binario del language server efrust-lsp (en PATH por defecto)."
+          "default": "molde-lsp",
+          "description": "Ruta al binario del language server molde-lsp (en PATH por defecto)."
         },
-        "efm.server.enabled": {
+        "molde.server.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Activa el language server (diagnostics, navegación, dependencias, formateo)."

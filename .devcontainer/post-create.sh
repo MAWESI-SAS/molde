@@ -12,7 +12,7 @@ cargo fetch
 
 echo "==> Listo. Comandos útiles:"
 echo "    cargo build && cargo test"
-echo "    efrust scaffold --connection \"\$DATABASE_URL\"   # BD -> models/*.model"
-echo "    efrust migrations add InitialCreate              # models/ -> migrations/"
-echo "    efrust database update --connection \"\$DATABASE_URL\""
+echo "    molde scaffold --connection \"\$DATABASE_URL\"   # BD -> models/*.model"
+echo "    molde migrations add InitialCreate              # models/ -> migrations/"
+echo "    molde database update --connection \"\$DATABASE_URL\""
 echo "    psql \"\$DATABASE_URL\"   # Postgres local (servicio db)"

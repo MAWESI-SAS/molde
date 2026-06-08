@@ -1,0 +1,25 @@
+[package]
+name = "molde-migrate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+description = "Runtime de aplicación de migraciones (sqlx + tiberius) para molde"
+
+[features]
+default = ["tls-rustls"]
+tls-rustls = ["sqlx/tls-rustls"]
+# Backend OpenSSL: más tolerante con certificados X.509 v1 (servidores legacy).
+tls-native-tls = ["sqlx/tls-native-tls"]
+
+[dependencies]
+molde-core = { workspace = true }
+molde-providers = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true, features = ["net", "sync"] }
+# SQL Server (TDS) — fuera del driver Any de sqlx.
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
+tokio-util = { version = "0.7", features = ["compat"] }
