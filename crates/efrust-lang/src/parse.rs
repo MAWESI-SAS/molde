@@ -31,14 +31,16 @@ pub fn parse_project(files: &[(&str, &str)]) -> Result<DatabaseModel> {
     model.format_version = IR_FORMAT_VERSION;
     for (name, contents) in files {
         if *name == "database.model" {
-            let g = parse_database(contents)?;
+            let g = parse_database(contents).map_err(|e| e.in_file(*name))?;
             model.default_schema = g.default_schema;
             model.product_version = g.product_version;
             model.extensions = g.extensions;
             model.functions = g.functions;
             model.raw_objects = g.raw_objects;
         } else {
-            model.tables.push(parse_entity(contents)?);
+            model
+                .tables
+                .push(parse_entity(contents).map_err(|e| e.in_file(*name))?);
         }
     }
     Ok(model)
@@ -46,6 +48,10 @@ pub fn parse_project(files: &[(&str, &str)]) -> Result<DatabaseModel> {
 
 /// Parsea el archivo global `database.model`.
 pub fn parse_database(src: &str) -> Result<DbGlobals> {
+    parse_database_inner(src).map_err(|e| e.with_source(src))
+}
+
+fn parse_database_inner(src: &str) -> Result<DbGlobals> {
     let nodes = parse_tree(src)?;
     let mut g = DbGlobals::default();
     for node in &nodes {
@@ -86,6 +92,10 @@ pub fn parse_database(src: &str) -> Result<DbGlobals> {
 
 /// Parsea un archivo de entidad a una `Table`.
 pub fn parse_entity(src: &str) -> Result<Table> {
+    parse_entity_inner(src).map_err(|e| e.with_source(src))
+}
+
+fn parse_entity_inner(src: &str) -> Result<Table> {
     let nodes = parse_tree(src)?;
     let header = nodes
         .first()
