@@ -242,16 +242,33 @@ set of FKs.
 
 ## 9. Indexes
 
-- **Inline:** the `unique` facet on a column (single-column unique index).
-- **`indexes:` block** for everything else:
+Three ways an index gets created:
+
+1. **Automatic — foreign keys.** Every `belongs-to` gets a non-unique backing
+   index by convention (§8), named `ix_<table>_<cols>`. You don't declare it and
+   it isn't shown in the canonical `.model`. Opt out with `index: false`.
+2. **Inline — single-column unique.** The `unique` facet on a column creates a
+   single-column unique index (`ix_<table>_<col>`).
+3. **The `indexes:` block — everything else** (you declare these): performance
+   indexes on regular columns, composite indexes, partial/filtered, special
+   methods (GIN/GiST/HNSW), expression indexes.
+
+> Rule of thumb: relationships → molde indexes them for you; query/performance
+> indexes → you declare them.
+
+Each `indexes:` entry is `- <name>: { <options> }`:
 
 ```
 indexes:
-  - ix_customer_email: {on: [Email], unique: true}
-  - ix_docs_fts:       {on: [], expression: "to_tsvector('english', body)", method: gin}
-  - ix_emb:            {on: [Embedding], method: hnsw, operators: [vector_cosine_ops]}
-  - ix_active:         {on: [Status], filter: "Deleted = false"}
+  - ix_order_status_created: {on: [Status, CreatedAt]}          # composite, non-unique
+  - ix_customer_email:       {on: [Email], unique: true}
+  - ix_docs_fts:             {on: [], expression: "to_tsvector('english', body)", method: gin}
+  - ix_emb:                  {on: [Embedding], method: hnsw, operators: [vector_cosine_ops]}
+  - ix_active:               {on: [Status], filter: "Deleted = false"}
 ```
+
+The label before the `:` is the index **name** (you choose it; lowercase by
+convention). `on:` is the ordered list of columns. The rest are optional:
 
 | Key | IR field |
 |---|---|

@@ -26,9 +26,34 @@ Order
     Id: int pk identity
     CustomerId: int
     Total: decimal precision=18,2
+    Status: string maxlen=20
+    CreatedAt: datetimeoffset
   belongs-to:
     Customer: {fk: CustomerId, references: Customer.Id, onDelete: cascade}
+  indexes:
+    - ix_order_status_created: {on: [Status, CreatedAt]}   # a query index you declare
 ```
+
+### Conventions (so you write less)
+
+molde fills in the boilerplate, EF-style. Generated names are **all lowercase**:
+`pk_<table>`, `fk_<table>_<principal>`, `ix_<table>_<cols>`. You only write a name
+when you want a custom one (the conventional ones are hidden from the `.model`).
+
+Indexes come from three places:
+
+- **Foreign keys are indexed automatically.** Every `belongs-to` gets a
+  non-unique `ix_<table>_<cols>` index — you don't declare it. Opt out with
+  `index: false`; molde also skips it when the columns are already covered by the
+  PK or another index.
+- **Single-column unique** → the `unique` facet on the field.
+- **Everything else** (performance, composite, partial, GIN/GiST/HNSW,
+  expression) → you declare it in the `indexes:` block, e.g.
+  `- ix_order_status_created: {on: [Status, CreatedAt]}` (the label is the index
+  name; `on:` is the ordered column list).
+
+> Relationships → molde indexes them for you. Query/performance indexes → you
+> declare them.
 
 Full specification: [`docs/molde-language-spec.md`](docs/molde-language-spec.md).
 
