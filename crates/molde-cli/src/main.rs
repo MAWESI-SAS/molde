@@ -45,6 +45,9 @@ enum Commands {
     /// Additively sync a target database from a source (live DB → live DB).
     Sync(commands::sync::SyncArgs),
 
+    /// Check whether a live database matches the model (drift check).
+    Verify(commands::verify::VerifyArgs),
+
     /// List known migrations.
     Status(commands::migrate::StatusArgs),
 
@@ -65,6 +68,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Snapshot(args) => commands::snapshot::run(args),
         Commands::Apply(args) => commands::apply::run(args),
         Commands::Sync(args) => commands::sync::run(args),
+        Commands::Verify(args) => commands::verify::run(args),
         Commands::Status(args) => commands::migrate::status(args),
         Commands::Undo(args) => commands::migrate::undo(args),
         Commands::Fmt(args) => commands::fmt::run(args),

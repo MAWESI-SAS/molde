@@ -7,3 +7,4 @@ pub mod pull;
 pub mod snapshot;
 pub mod sync;
 pub mod ui;
+pub mod verify;

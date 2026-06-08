@@ -84,6 +84,7 @@ All exist today unless marked *(proposed)*.
 | `molde undo` | Remove the latest (un-merged, local) migration while iterating. |
 | `molde fmt` | Canonicalize `.model` files (run before commit; enforce in CI). |
 | `molde snapshot` | Regenerate `snapshot.json` from `.model` with no migration (or verify with `--check`) — powers the merge driver (§7.2). ✅ *exists today* |
+| `molde verify` | Check whether a live database matches the model (drift check). `--check` exits non-zero on drift — CI gate §9.3 and the local "is my DB in sync?" answer. ✅ *exists today* |
 | `molde up` *(proposed, §11)* | One command: `git`-aware catch-up = apply pending migrations **or** `sync` from trunk + drift report. |
 
 ---
@@ -245,12 +246,9 @@ On every PR:
 1. **`molde fmt --check`** — models are canonical.
 2. **Fresh-DB apply** — spin up an empty DB, `molde apply` *all* migrations from
    scratch. Catches ordering and semantic conflicts (§7.4).
-3. **Model ⇄ migrations consistency** — after applying all migrations, the DB
-   structure must equal the model. Implementable today as: `molde migrate` on a
-   clean tree produces **no** new migration (the model matches the snapshot), and
-   a fresh-applied DB `sync --dry-run` against the model-built DB reports **0
-   additive changes**. *(A dedicated `molde verify` would make this one step —
-   §11 item 3.)*
+3. **Model ⇄ migrations consistency** — apply all migrations to a fresh DB, then
+   `molde verify --check` against it: it must report **no drift**, i.e. the
+   migrated database equals the model. ✅ *exists today*
 4. **Snapshot consistency** — `molde snapshot --check` verifies `snapshot.json`
    equals the serialization of `models/` (no stale snapshot), exiting non-zero if
    it drifted. ✅ *exists today*
@@ -283,15 +281,16 @@ the conveniences below. Prioritized by impact on conflict-minimization:
 |---|---|---|---|
 | 1 | **`molde snapshot`** ✅ **done** | The #1 remaining merge friction (§7.2). Regenerating the snapshot from the merged models makes concurrent migrations conflict-free. | `molde snapshot [--from-models D] [--output P]` regenerates `snapshot.json` byte-identically to `migrate`. Wire as a `.gitattributes` merge driver (`driver = molde snapshot --output %A`). |
 | 2 | **`molde snapshot --check`** ✅ **done** | CI gate §9.4; lets devs detect a stale snapshot before pushing. | Same command, `--check` exits non-zero when the on-disk snapshot drifted from the models. |
-| 3 | **`molde verify`** (drift check) | One-step CI gate §9.3 and local "is my DB in sync with the model?" Answers the question `sync --dry-run` approximates today. | Compare a target DB's live structure to the model (reuse `sync`'s reader + `migrate`'s diff); report drift, exit non-zero in `--check`. |
+| 3 | **`molde verify`** (drift check) ✅ **done** | One-step CI gate §9.3 and local "is my DB in sync with the model?" | Reads the live DB through the `.model` pipeline and diffs it against the model, comparing column types by the engine's **stored** form (`store_type_for`) so round-trip-lossy types don't read as drift. Reports drift by direction; `--check` exits non-zero. |
 | 4 | **`molde up`** | Collapses the daily catch-up (§5.1) into one command: `git`-aware apply **or** sync-from-trunk + drift report. | Thin orchestration over `apply`/`sync` + `verify`. |
 | 5 | **`molde fresh`** | Encourages the "rebuild is cheap" convention (§10.5). | Drop/recreate local DB + `apply` all. |
 | 6 | **`molde init-team`** | One-shot setup of `.gitattributes` merge driver + sample CI. Lowers adoption cost for a large team. | Writes the merge-driver config and a CI template. |
 | 7 | **Stale help text** | `molde apply --provider` help still says "sqlite \| postgres" but 4 engines exist. | Trivial copy fix. |
 
-**Build order:** items 1–2 are **done** (this is the bulk of the
-conflict-minimization value). Next is item 3 (`molde verify`) to complete the CI
-gates; items 4–6 are ergonomics; item 7 is a one-line cleanup.
+**Build order:** items 1–3 are **done** — the snapshot merge driver plus the
+`verify`/`snapshot --check` CI gates deliver the bulk of the
+conflict-minimization value. Items 4–6 are ergonomics; item 7 is a one-line
+cleanup.
 
 ---
 
