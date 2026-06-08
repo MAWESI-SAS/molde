@@ -214,7 +214,7 @@ mod tests {
                 col("Email", "System.String", true, false),
             ],
             primary_key: Some(PrimaryKey {
-                name: "PK_Customer".into(),
+                name: "pk_customer".into(),
                 columns: vec!["Id".into()],
             }),
             foreign_keys: vec![],
@@ -236,7 +236,7 @@ mod tests {
         for stmt in ddl {
             sqlx::query(&stmt).execute(&pool).await.unwrap();
         }
-        sqlx::query("CREATE UNIQUE INDEX IX_Customer_Email ON \"Customer\" (\"Email\");")
+        sqlx::query("CREATE UNIQUE INDEX ix_customer_email ON \"Customer\" (\"Email\");")
             .execute(&pool)
             .await
             .unwrap();
@@ -258,7 +258,7 @@ mod tests {
         let idx = customer
             .indexes
             .iter()
-            .find(|i| i.name == "IX_Customer_Email")
+            .find(|i| i.name == "ix_customer_email")
             .expect("index read");
         assert!(idx.is_unique);
 
@@ -300,7 +300,7 @@ mod tests {
                 col("Age", age_clr, true, false),
             ],
             primary_key: Some(PrimaryKey {
-                name: "PK_Person".into(),
+                name: "pk_person".into(),
                 columns: vec!["Id".into()],
             }),
             foreign_keys: vec![],

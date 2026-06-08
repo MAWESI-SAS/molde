@@ -9,6 +9,7 @@
 //! the scaffolder produce a [`model::DatabaseModel`]; the rest of the system
 //! operates on it.
 
+pub mod conventions;
 pub mod diff;
 pub mod migration;
 pub mod model;

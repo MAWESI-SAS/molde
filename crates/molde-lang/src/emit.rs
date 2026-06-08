@@ -105,7 +105,7 @@ pub fn emit_entity(t: &Table, _model: &DatabaseModel) -> String {
     if let Some(pk) = &t.primary_key {
         if pk.columns.len() > 1 {
             let cols = pk.columns.join(", ");
-            if pk.name == format!("PK_{}", t.name) {
+            if pk.name == molde_core::conventions::pk_name(&t.name) {
                 let _ = writeln!(s, "  key: [{cols}]");
             } else {
                 let _ = writeln!(s, "  key: [{cols}] name={}", quote_scalar(&pk.name));
@@ -161,7 +161,7 @@ fn is_inline_unique(t: &Table, ix: &Index) -> bool {
         && ix.operators.is_empty()
         && ix.filter.is_none()
         && ix.expression.is_none()
-        && ix.name == format!("IX_{}_{}", t.name, ix.columns[0])
+        && ix.name == molde_core::conventions::index_name(&t.name, &ix.columns)
 }
 
 fn emit_field(_t: &Table, col: &Column, pk: Option<&str>, uniq: bool) -> String {
@@ -185,7 +185,7 @@ fn emit_field(_t: &Table, col: &Column, pk: Option<&str>, uniq: bool) -> String 
 
     let mut facets: Vec<String> = Vec::new();
     if let Some(name) = pk {
-        if name == format!("PK_{}", _t.name) {
+        if name == molde_core::conventions::pk_name(&_t.name) {
             facets.push("pk".to_string());
         } else {
             facets.push(format!("pk={}", quote_scalar(name)));
@@ -264,7 +264,7 @@ fn emit_fk(t: &Table, fk: &ForeignKey) -> String {
         parts.push(format!("onDelete: {}", action_name(fk.on_delete)));
     }
     // name (only if it is not conventional)
-    if fk.name != format!("FK_{}_{}", t.name, fk.principal_table) {
+    if fk.name != molde_core::conventions::fk_name(&t.name, &fk.principal_table) {
         parts.push(format!("name: {}", quote_scalar(&fk.name)));
     }
     format!("{{{}}}", parts.join(", "))

@@ -159,9 +159,9 @@ After `<Col>: <type>[?]`, a sequence of space-separated facets.
 
 | Facet | IR field |
 |---|---|
-| `pk` | adds the column to `primary_key` (simple PK; name by convention `PK_<table>`) |
+| `pk` | adds the column to `primary_key` (simple PK; name by convention `pk_<table>`) |
 | `identity` | `is_identity = true` |
-| `unique` | creates a single-column unique index (`IX_<table>_<col>`) |
+| `unique` | creates a single-column unique index (`ix_<table>_<col>`) |
 | `stored` | `computed_stored = true` (use together with `computed=`) |
 
 **With a value** (`key=value`):
@@ -193,12 +193,13 @@ Body:  json dbtype=jsonb comment="raw payload"
 
 ## 7. Primary key
 
-- **Simple:** the `pk` facet on the column. Name by convention `PK_<table>`,
-  or explicit with `pk=<name>`.
+- **Simple:** the `pk` facet on the column. Name by convention `pk_<table>`
+  (all lowercase), or explicit with `pk=<name>`.
 - **Composite / named at the table level:** the `key:` block.
 
 ```
-key: [TenantId, Id] name=PK_Item
+key: [TenantId, Id]                 # name defaults to pk_<table>
+key: [TenantId, Id] name=tenant_items_pk   # or an explicit custom name
 ```
 
 Maps to `PrimaryKey { name, columns }`.
@@ -211,7 +212,8 @@ The FK lives in the **dependent** table, under `belongs-to:`:
 
 ```
 belongs-to:
-  Customer: {fk: CustomerId, references: Customer.Id, onDelete: cascade, name: FK_Order_Customer}
+  Customer: {fk: CustomerId, references: Customer.Id, onDelete: cascade}
+  # name defaults to fk_<table>_<principal>; add `name: <custom>` to override
 ```
 
 | Key | IR field | Notes |
@@ -220,7 +222,7 @@ belongs-to:
 | `fk` | `columns` | local column(s); a list if composite: `[A, B]` |
 | `references` | `principal_table` (+ `principal_schema`) and `principal_columns` | `Table.Col` or `schema.Table.[A,B]` |
 | `onDelete` | `on_delete` | `no_action`\|`restrict`\|`cascade`\|`set_null`\|`set_default` |
-| `name` | `name` | optional; convention `FK_<table>_<principal>` |
+| `name` | `name` | optional; convention `fk_<table>_<principal>` (all lowercase) |
 
 **Inverse** navigations (principal side) are **not modeled**: the FK is already
 described on the dependent side. Listing them would duplicate information without
@@ -236,7 +238,7 @@ set of FKs.
 
 ```
 indexes:
-  - IX_Customer_Email: {on: [Email], unique: true}
+  - ix_customer_email: {on: [Email], unique: true}
   - ix_docs_fts:       {on: [], expression: "to_tsvector('english', body)", method: gin}
   - ix_emb:            {on: [Embedding], method: hnsw, operators: [vector_cosine_ops]}
   - ix_active:         {on: [Status], filter: "Deleted = false"}
@@ -498,7 +500,7 @@ Order
     Total:      decimal precision=18,2
     Status:     enum[Pending, Shipped] as=string maxlen=20
   belongs-to:
-    Customer: {fk: CustomerId, references: Customer.Id, onDelete: cascade, name: FK_Order_Customer}
+    Customer: {fk: CustomerId, references: Customer.Id, onDelete: cascade, name: fk_order_customer}
 ```
 
 `Payment.model`
@@ -522,7 +524,7 @@ Customer
     Email:         string? maxlen=320
     Contact_Phone: string?
   indexes:
-    - IX_Customer_Email: {on: [Email], unique: true}
+    - ix_customer_email: {on: [Email], unique: true}
   seed:
     - {Id: 1, Name: "ACME",   Email: "acme@example.com"}
     - {Id: 2, Name: "Globex", Email: ~}

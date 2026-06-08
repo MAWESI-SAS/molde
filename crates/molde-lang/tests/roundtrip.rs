@@ -56,12 +56,12 @@ fn sample() -> DatabaseModel {
             col("Contact_Phone", "System.String", true),
         ],
         primary_key: Some(PrimaryKey {
-            name: "PK_Customer".into(),
+            name: "pk_customer".into(),
             columns: vec!["Id".into()],
         }),
         foreign_keys: vec![],
         indexes: vec![Index {
-            name: "IX_Customer_Email".into(),
+            name: "ix_customer_email".into(),
             columns: vec!["Email".into()],
             is_unique: true,
             filter: None,
@@ -107,11 +107,11 @@ fn sample() -> DatabaseModel {
             flag,
         ],
         primary_key: Some(PrimaryKey {
-            name: "PK_Order".into(),
+            name: "pk_order".into(),
             columns: vec!["Id".into()],
         }),
         foreign_keys: vec![ForeignKey {
-            name: "FK_Order_Customer".into(),
+            name: "fk_order_customer".into(),
             columns: vec!["CustomerId".into()],
             principal_table: "Customer".into(),
             principal_schema: None,
@@ -149,7 +149,7 @@ fn sample() -> DatabaseModel {
         comment: None,
         columns: vec![did, col("Body", "System.String", false), embedding, search, slug, meta],
         primary_key: Some(PrimaryKey {
-            name: "PK_Document".into(),
+            name: "pk_document".into(),
             columns: vec!["Id".into()],
         }),
         foreign_keys: vec![],
@@ -197,7 +197,7 @@ fn sample() -> DatabaseModel {
             col("OwnerId", "System.Int32", true),
         ],
         primary_key: Some(PrimaryKey {
-            name: "PK_Item".into(),
+            name: "pk_item".into(),
             columns: vec!["TenantId".into(), "Id".into()],
         }),
         foreign_keys: vec![ForeignKey {

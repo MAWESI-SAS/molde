@@ -228,7 +228,10 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
         }
         if b.unique {
             table.indexes.push(Index {
-                name: format!("IX_{}_{}", table.name, b.col.name),
+                name: molde_core::conventions::index_name(
+                    &table.name,
+                    std::slice::from_ref(&b.col.name),
+                ),
                 columns: vec![b.col.name.clone()],
                 is_unique: true,
                 filter: None,
@@ -244,7 +247,7 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
         Some(pk)
     } else if !pk_cols.is_empty() {
         Some(PrimaryKey {
-            name: pk_name.unwrap_or_else(|| format!("PK_{}", table.name)),
+            name: pk_name.unwrap_or_else(|| molde_core::conventions::pk_name(&table.name)),
             columns: pk_cols,
         })
     } else {
@@ -448,7 +451,7 @@ fn parse_type_token(tok: &str) -> (String, bool, bool) {
 fn parse_key(table_name: &str, node: &Node) -> Result<PrimaryKey> {
     let tokens = tokenize_ws(&node.inline);
     let mut columns = Vec::new();
-    let mut name = format!("PK_{table_name}");
+    let mut name = molde_core::conventions::pk_name(table_name);
     for t in &tokens {
         if let Some(v) = t.strip_prefix("name=") {
             name = unquote(v);
@@ -488,7 +491,7 @@ fn parse_fk(table_name: &str, node: &Node) -> Result<ForeignKey> {
     let name = map
         .get("name")
         .and_then(value_str)
-        .unwrap_or_else(|| format!("FK_{table_name}_{principal_table}"));
+        .unwrap_or_else(|| molde_core::conventions::fk_name(table_name, &principal_table));
     let _ = nav;
 
     Ok(ForeignKey {

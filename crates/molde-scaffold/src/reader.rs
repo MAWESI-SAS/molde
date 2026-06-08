@@ -163,7 +163,7 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
             }
         }
         table.primary_key = Some(PrimaryKey {
-            name: format!("PK_{name}"),
+            name: molde_core::conventions::pk_name(name),
             columns,
         });
     }
@@ -184,13 +184,23 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
         let to: String = r.try_get("to")?;
         let on_delete: String = r.try_get("on_delete").unwrap_or_default();
 
-        let fk = fks.entry(id).or_insert_with(|| ForeignKey {
-            name: format!("FK_{name}_{ref_table}_{id}"),
-            columns: Vec::new(),
-            principal_table: ref_table,
-            principal_schema: None,
-            principal_columns: Vec::new(),
-            on_delete: parse_action(&on_delete),
+        let fk = fks.entry(id).or_insert_with(|| {
+            // Match the authoring convention for the common single-FK case
+            // (id 0); disambiguate extra FKs to the same principal with a suffix.
+            let base = molde_core::conventions::fk_name(name, &ref_table);
+            let fk_name = if id == 0 {
+                base
+            } else {
+                format!("{base}_{id}")
+            };
+            ForeignKey {
+                name: fk_name,
+                columns: Vec::new(),
+                principal_table: ref_table,
+                principal_schema: None,
+                principal_columns: Vec::new(),
+                on_delete: parse_action(&on_delete),
+            }
         });
         fk.columns.push(from);
         fk.principal_columns.push(to);
@@ -939,7 +949,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
         };
         let column = my_str(&r, "COLUMN_NAME")?;
         let pk = table.primary_key.get_or_insert_with(|| PrimaryKey {
-            name: format!("PK_{table_name}"),
+            name: molde_core::conventions::pk_name(&table_name),
             columns: Vec::new(),
         });
         pk.columns.push(column);
