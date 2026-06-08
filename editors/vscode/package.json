@@ -1,0 +1,69 @@
+{
+  "name": "efm-language",
+  "displayName": "EFM — efrust models",
+  "description": "Soporte de lenguaje para archivos .model (EFM): resaltado, formateo, navegación y dependencias.",
+  "version": "0.0.1",
+  "publisher": "efrust",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters"
+  ],
+  "activationEvents": [
+    "onLanguage:efm"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "efm",
+        "aliases": [
+          "EFM",
+          "efrust model"
+        ],
+        "extensions": [
+          ".model"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "efm",
+        "scopeName": "source.efm",
+        "path": "./syntaxes/efm.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "EFM",
+      "properties": {
+        "efm.server.path": {
+          "type": "string",
+          "default": "efrust-lsp",
+          "description": "Ruta al binario del language server efrust-lsp (en PATH por defecto)."
+        },
+        "efm.server.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Activa el language server (diagnostics, navegación, dependencias, formateo)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.4.0"
+  }
+}
