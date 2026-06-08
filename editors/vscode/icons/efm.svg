@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Tarjeta de entidad (tabla del modelo) -->
+  <rect x="5" y="4" width="22" height="24" rx="3" fill="#2F9E8F"/>
+  <!-- Cabecera -->
+  <path d="M5 7a3 3 0 0 1 3-3h16a3 3 0 0 1 3 3v3H5z" fill="#1E7A6E"/>
+  <!-- Campos -->
+  <rect x="8.5" y="13.5" width="15" height="2.4" rx="1.2" fill="#EAF7F4"/>
+  <rect x="8.5" y="18"   width="15" height="2.4" rx="1.2" fill="#EAF7F4"/>
+  <rect x="8.5" y="22.5" width="9"  height="2.4" rx="1.2" fill="#EAF7F4"/>
+  <!-- Punto de clave/relación -->
+  <circle cx="21" cy="23.7" r="1.7" fill="#FFD24D"/>
+</svg>

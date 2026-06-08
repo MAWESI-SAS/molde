@@ -2,7 +2,7 @@
   "name": "efm-language",
   "displayName": "EFM — efrust models",
   "description": "Soporte de lenguaje para archivos .model (EFM): resaltado, formateo, navegación y dependencias.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "efrust",
   "license": "MIT",
   "engines": {
@@ -27,7 +27,11 @@
         "extensions": [
           ".model"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/efm.svg",
+          "dark": "./icons/efm.svg"
+        }
       }
     ],
     "grammars": [
