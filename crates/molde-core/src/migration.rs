@@ -92,23 +92,31 @@ pub fn load_dir(dir: impl AsRef<Path>) -> Result<Vec<Migration>, MigrationError>
         if !starts_with_digit {
             continue;
         }
-        let bytes = std::fs::read(&path)?;
-        let migration: Migration =
-            serde_json::from_slice(&bytes).map_err(|source| MigrationError::Serde {
-                path: path.display().to_string(),
-                source,
-            })?;
-        if migration.format_version > MIGRATION_FORMAT_VERSION {
-            return Err(MigrationError::UnsupportedFormat {
-                path: path.display().to_string(),
-                found: migration.format_version,
-            });
-        }
-        migrations.push(migration);
+        migrations.push(load_file(&path)?);
     }
 
     migrations.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(migrations)
+}
+
+/// Loads a single migration from `path`, validating its format version. Used by
+/// [`load_dir`] and by callers that want to lint/inspect a specific file (e.g.
+/// just the migrations touched by a pull request).
+pub fn load_file(path: impl AsRef<Path>) -> Result<Migration, MigrationError> {
+    let path = path.as_ref();
+    let bytes = std::fs::read(path)?;
+    let migration: Migration =
+        serde_json::from_slice(&bytes).map_err(|source| MigrationError::Serde {
+            path: path.display().to_string(),
+            source,
+        })?;
+    if migration.format_version > MIGRATION_FORMAT_VERSION {
+        return Err(MigrationError::UnsupportedFormat {
+            path: path.display().to_string(),
+            found: migration.format_version,
+        });
+    }
+    Ok(migration)
 }
 
 /// Rebuilds the model by replaying the `up` operations of a sequence of
