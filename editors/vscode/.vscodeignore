@@ -1,6 +1,8 @@
 .vscode/**
 src/**
-node_modules/**
 tsconfig.json
 .gitignore
+package-lock.json
 **/*.map
+# node_modules NO se excluye: vscode-languageclient se usa en runtime y vsce
+# incluye solo las dependencias de producción.
