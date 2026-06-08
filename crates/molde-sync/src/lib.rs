@@ -17,6 +17,7 @@
 mod engine;
 mod postgres;
 mod schema;
+mod sqlite;
 
 pub use engine::{engine_for, SyncEngine};
 pub use postgres::PostgresEngine;
@@ -24,3 +25,4 @@ pub use schema::{
     diff, ColumnInfo, Conflict, ConstraintInfo, DbSchema, DiffResult, IndexInfo, RoutineInfo,
     TableInfo, TriggerInfo, ViewInfo,
 };
+pub use sqlite::SqliteEngine;

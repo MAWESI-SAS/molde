@@ -32,5 +32,8 @@ pub fn engine_for(conn: &str) -> Option<Box<dyn SyncEngine>> {
     if c.starts_with("postgres://") || c.starts_with("postgresql://") {
         return Some(Box::new(crate::postgres::PostgresEngine));
     }
+    if c.starts_with("sqlite:") {
+        return Some(Box::new(crate::sqlite::SqliteEngine));
+    }
     None
 }

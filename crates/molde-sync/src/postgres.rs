@@ -118,6 +118,7 @@ async fn read_columns(pool: &PgPool, schema: &mut DbSchema) -> Result<()> {
             .or_insert_with(|| TableInfo {
                 name: table,
                 columns: Vec::new(),
+                create_sql: None,
             })
             .columns
             .push(column);
@@ -580,6 +581,7 @@ mod tests {
                 default: Some("gen_random_uuid()".into()),
                 is_generated: false,
             }],
+            create_sql: None,
         });
         diff.new_indexes.push(IndexInfo {
             name: "ix_invoice".into(),

@@ -11,6 +11,9 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct TableInfo {
     pub name: String,
     pub columns: Vec<ColumnInfo>,
+    /// Full `CREATE TABLE` text when the engine provides one (SQLite/MySQL). The
+    /// Postgres engine builds the DDL from `columns` and leaves this `None`.
+    pub create_sql: Option<String>,
 }
 
 /// A column with the exact type text and its defining attributes.
@@ -311,6 +314,7 @@ mod tests {
             TableInfo {
                 name: "A".into(),
                 columns: vec![col("id", "integer"), col("extra", "text")],
+                create_sql: None,
             },
         );
         let mut target = DbSchema::default();
@@ -320,6 +324,7 @@ mod tests {
             TableInfo {
                 name: "A".into(),
                 columns: vec![col("id", "integer")],
+                create_sql: None,
             },
         );
         target.tables.insert(
@@ -327,6 +332,7 @@ mod tests {
             TableInfo {
                 name: "B".into(),
                 columns: vec![col("id", "integer")],
+                create_sql: None,
             },
         );
 
@@ -345,6 +351,7 @@ mod tests {
             TableInfo {
                 name: "A".into(),
                 columns: vec![col("name", "character varying(50)")],
+                create_sql: None,
             },
         );
         let mut target = DbSchema::default();
@@ -353,6 +360,7 @@ mod tests {
             TableInfo {
                 name: "A".into(),
                 columns: vec![col("name", "character varying(30)")],
+                create_sql: None,
             },
         );
 
