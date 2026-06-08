@@ -119,6 +119,9 @@ cargo build -p molde-cli --no-default-features --features tls-native-tls
 
 ## Commands
 
+Quick tour below; the **full reference** — every command and flag — is in
+[`docs/cli.md`](docs/cli.md) (or run `molde <command> --help`).
+
 ```bash
 # 0. Database lifecycle: create / drop / reset the database itself.
 molde db create --connection "$DATABASE_URL"
