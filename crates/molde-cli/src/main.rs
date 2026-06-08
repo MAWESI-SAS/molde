@@ -1,10 +1,12 @@
-//! molde — gestión de esquema en Rust sobre el lenguaje de modelos molde.
+//! molde — schema management in Rust over the `.model` language.
 //!
-//! Comandos:
-//! - `scaffold`        BD → archivos `.model`
-//! - `fmt`             formatea archivos `.model` a su forma canónica
-//! - `migrations add`  `.model` → migración (diff contra el snapshot)
-//! - `database update` aplica/revierte migraciones contra la BD
+//! Commands:
+//! - `pull`     database → `.model` files (introspection)
+//! - `migrate`  `.model` → migration (diff against the snapshot)
+//! - `apply`    apply/roll back migrations against the database
+//! - `status`   list known migrations
+//! - `undo`     remove the latest migration
+//! - `fmt`      format `.model` files to their canonical form
 
 use clap::{Parser, Subcommand};
 
@@ -14,11 +16,11 @@ mod commands;
 #[command(
     name = "molde",
     version,
-    about = "Scaffolding, migraciones y aplicación de migraciones para EF Core, en Rust",
+    about = "molde — a Rust schema tool: introspect, migrate, apply",
     long_about = None
 )]
 struct Cli {
-    /// Aumenta el nivel de detalle de los logs (-v, -vv).
+    /// Increase log verbosity (-v, -vv).
     #[arg(short, long, action = clap::ArgAction::Count, global = true)]
     verbose: u8,
 
@@ -28,35 +30,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Genera archivos `.model` (molde) desde una base de datos existente (database-first).
-    Scaffold(commands::scaffold::ScaffoldArgs),
+    /// Introspect an existing database into `.model` files (database-first).
+    Pull(commands::pull::PullArgs),
 
-    /// Formatea archivos `.model` a su forma canónica.
+    /// Create a migration from the diff between the models and the snapshot.
+    Migrate(commands::migrate::MigrateArgs),
+
+    /// Apply pending migrations to the database (or roll back with `--to`).
+    Apply(commands::apply::ApplyArgs),
+
+    /// List known migrations.
+    Status(commands::migrate::StatusArgs),
+
+    /// Remove the latest migration.
+    Undo(commands::migrate::UndoArgs),
+
+    /// Format `.model` files to their canonical form.
     Fmt(commands::fmt::FmtArgs),
-
-    /// Operaciones sobre migraciones.
-    #[command(subcommand)]
-    Migrations(MigrationsCommands),
-
-    /// Operaciones sobre la base de datos.
-    #[command(subcommand)]
-    Database(DatabaseCommands),
-}
-
-#[derive(Subcommand)]
-enum MigrationsCommands {
-    /// Crea una nueva migración a partir del diff modelo-actual vs snapshot.
-    Add(commands::migrations::AddArgs),
-    /// Lista las migraciones conocidas.
-    List(commands::migrations::ListArgs),
-    /// Elimina la última migración (si no está aplicada).
-    Remove(commands::migrations::RemoveArgs),
-}
-
-#[derive(Subcommand)]
-enum DatabaseCommands {
-    /// Aplica las migraciones pendientes a la base de datos.
-    Update(commands::database::UpdateArgs),
 }
 
 fn main() -> anyhow::Result<()> {
@@ -64,16 +54,12 @@ fn main() -> anyhow::Result<()> {
     init_tracing(cli.verbose);
 
     match cli.command {
-        Commands::Scaffold(args) => commands::scaffold::run(args),
+        Commands::Pull(args) => commands::pull::run(args),
+        Commands::Migrate(args) => commands::migrate::migrate(args),
+        Commands::Apply(args) => commands::apply::run(args),
+        Commands::Status(args) => commands::migrate::status(args),
+        Commands::Undo(args) => commands::migrate::undo(args),
         Commands::Fmt(args) => commands::fmt::run(args),
-        Commands::Migrations(cmd) => match cmd {
-            MigrationsCommands::Add(args) => commands::migrations::add(args),
-            MigrationsCommands::List(args) => commands::migrations::list(args),
-            MigrationsCommands::Remove(args) => commands::migrations::remove(args),
-        },
-        Commands::Database(cmd) => match cmd {
-            DatabaseCommands::Update(args) => commands::database::update(args),
-        },
     }
 }
 

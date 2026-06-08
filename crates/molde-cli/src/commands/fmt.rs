@@ -1,8 +1,8 @@
-//! `molde fmt` — formatea archivos `.model` a su forma canónica.
+//! `molde fmt` — format `.model` files to their canonical form.
 //!
-//! Tres modos:
-//! - rutas (archivos o directorios): formatea in situ, o solo verifica con `--check`.
-//! - `--stdin`: lee de stdin y escribe el resultado en stdout (para editores).
+//! Three modes:
+//! - paths (files or directories): format in place, or only check with `--check`.
+//! - `--stdin`: read from stdin and write the result to stdout (for editors).
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -10,21 +10,23 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::Args;
 
+use crate::commands::ui;
+
 #[derive(Args)]
 pub struct FmtArgs {
-    /// Archivos `.model` o directorios a formatear. Por defecto `models/`.
+    /// `.model` files or directories to format. Defaults to `models/`.
     pub paths: Vec<PathBuf>,
 
-    /// No escribe; sale con código != 0 si algún archivo no está formateado.
+    /// Do not write; exit non-zero if any file is not formatted.
     #[arg(long)]
     pub check: bool,
 
-    /// Lee el contenido de stdin y escribe el resultado formateado en stdout.
+    /// Read content from stdin and write the formatted result to stdout.
     #[arg(long)]
     pub stdin: bool,
 
-    /// Nombre del archivo para inferir el tipo al usar `--stdin`
-    /// (`database.model` = globales; cualquier otro = entidad).
+    /// File name used to infer the kind with `--stdin`
+    /// (`database.model` = globals; anything else = entity).
     #[arg(long, default_value = "entity.model")]
     pub stdin_name: String,
 }
@@ -43,10 +45,10 @@ pub fn run(args: FmtArgs) -> Result<()> {
     let mut files = Vec::new();
     for p in &paths {
         collect_models(p, &mut files)
-            .with_context(|| format!("recolectando .model en {}", p.display()))?;
+            .with_context(|| format!("collecting .model files in {}", p.display()))?;
     }
     if files.is_empty() {
-        println!("No se encontraron archivos .model.");
+        ui::info("no .model files found.");
         return Ok(());
     }
 
@@ -57,52 +59,51 @@ pub fn run(args: FmtArgs) -> Result<()> {
             Ok(true) => {
                 changed += 1;
                 if args.check {
-                    println!("  ✗ sin formatear: {}", path.display());
+                    ui::warn(format!("not formatted: {}", path.display()));
                 } else {
-                    println!("  ✔ formateado: {}", path.display());
+                    ui::ok(format!("formatted: {}", path.display()));
                 }
             }
             Ok(false) => {}
             Err(e) => {
                 errors += 1;
-                eprintln!("  ⚠ {}: {e}", path.display());
+                ui::warn(format!("{}: {e}", path.display()));
             }
         }
     }
 
     if errors > 0 {
-        anyhow::bail!("{errors} archivo(s) con errores de parseo");
+        anyhow::bail!("{errors} file(s) with parse errors");
     }
     if args.check {
         if changed > 0 {
-            anyhow::bail!("{changed} archivo(s) sin formatear");
+            anyhow::bail!("{changed} file(s) not formatted");
         }
-        println!("Todos los archivos ya están formateados.");
+        ui::ok("all files are already formatted.");
     } else {
-        println!(
-            "Listo: {changed} archivo(s) reformateado(s) de {}.",
+        ui::ok(format!(
+            "{changed} file(s) reformatted out of {}.",
             files.len()
-        );
+        ));
     }
     Ok(())
 }
 
-/// Formatea un único archivo. Devuelve `true` si el contenido cambió (o cambiaría
-/// con `--check`).
+/// Format a single file. Returns `true` if the content changed (or would change
+/// with `--check`).
 fn format_one(path: &Path, check: bool) -> Result<bool> {
     let name = path
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("entity.model");
     let src =
-        std::fs::read_to_string(path).with_context(|| format!("leyendo {}", path.display()))?;
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let formatted = molde_lang::format_model(name, &src).map_err(anyhow::Error::new)?;
     if formatted == src {
         return Ok(false);
     }
     if !check {
-        std::fs::write(path, &formatted)
-            .with_context(|| format!("escribiendo {}", path.display()))?;
+        std::fs::write(path, &formatted).with_context(|| format!("writing {}", path.display()))?;
     }
     Ok(true)
 }
@@ -111,15 +112,15 @@ fn run_stdin(name: &str) -> Result<()> {
     let mut src = String::new();
     std::io::stdin()
         .read_to_string(&mut src)
-        .context("leyendo stdin")?;
+        .context("reading stdin")?;
     let formatted = molde_lang::format_model(name, &src).map_err(anyhow::Error::new)?;
     std::io::stdout()
         .write_all(formatted.as_bytes())
-        .context("escribiendo stdout")?;
+        .context("writing stdout")?;
     Ok(())
 }
 
-/// Junta los `.model` de una ruta (archivo suelto o directorio, no recursivo).
+/// Gather the `.model` files from a path (single file or directory, non-recursive).
 fn collect_models(path: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
     if path.is_dir() {
         for entry in std::fs::read_dir(path)? {
@@ -131,10 +132,7 @@ fn collect_models(path: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
     } else if path.extension().and_then(|s| s.to_str()) == Some("model") {
         out.push(path.to_path_buf());
     } else {
-        anyhow::bail!(
-            "no es un archivo .model ni un directorio: {}",
-            path.display()
-        );
+        anyhow::bail!("not a .model file or directory: {}", path.display());
     }
     Ok(())
 }

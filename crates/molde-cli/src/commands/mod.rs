@@ -1,6 +1,7 @@
-//! Implementación de los subcomandos del CLI.
+//! CLI subcommand implementations.
 
-pub mod database;
+pub mod apply;
 pub mod fmt;
-pub mod migrations;
-pub mod scaffold;
+pub mod migrate;
+pub mod pull;
+pub mod ui;

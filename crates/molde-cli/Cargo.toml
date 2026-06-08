@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-description = "CLI estilo `dotnet ef` implementado en Rust"
+description = "molde — herramienta de esquema (introspección, migraciones, aplicación) en Rust"
 
 [[bin]]
 name = "molde"
@@ -32,3 +32,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tokio = { workspace = true }
 time = { workspace = true }
+# UX interactiva: prompts, spinner y color (con autodetección de TTY).
+dialoguer = { version = "0.11", default-features = false, features = ["password"] }
+indicatif = "0.17"
+console = "0.15"
