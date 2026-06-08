@@ -35,5 +35,8 @@ pub fn engine_for(conn: &str) -> Option<Box<dyn SyncEngine>> {
     if c.starts_with("sqlite:") {
         return Some(Box::new(crate::sqlite::SqliteEngine));
     }
+    if c.starts_with("mysql://") {
+        return Some(Box::new(crate::mysql::MysqlEngine));
+    }
     None
 }

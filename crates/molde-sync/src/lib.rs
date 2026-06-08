@@ -11,15 +11,17 @@
 //! order. The result is a portable, atomic, idempotent SQL script that can be
 //! applied to the target or carried elsewhere (e.g. production).
 //!
-//! Engine support is pluggable via [`SyncEngine`]; PostgreSQL is implemented
-//! today. Use [`engine_for`] to pick the engine from a connection string.
+//! Engine support is pluggable via [`SyncEngine`]; PostgreSQL, SQLite and MySQL
+//! are implemented. Use [`engine_for`] to pick the engine from a connection string.
 
 mod engine;
+mod mysql;
 mod postgres;
 mod schema;
 mod sqlite;
 
 pub use engine::{engine_for, SyncEngine};
+pub use mysql::MysqlEngine;
 pub use postgres::PostgresEngine;
 pub use schema::{
     diff, ColumnInfo, Conflict, ConstraintInfo, DbSchema, DiffResult, IndexInfo, RoutineInfo,
