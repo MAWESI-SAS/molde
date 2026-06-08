@@ -85,6 +85,7 @@ All exist today unless marked *(proposed)*.
 | `molde fmt` | Canonicalize `.model` files (run before commit; enforce in CI). |
 | `molde snapshot` | Regenerate `snapshot.json` from `.model` with no migration (or verify with `--check`) — powers the merge driver (§7.2). ✅ *exists today* |
 | `molde verify` | Check whether a live database matches the model (drift check). `--check` exits non-zero on drift — CI gate §9.3 and the local "is my DB in sync?" answer. ✅ *exists today* |
+| `molde init-team` | One-shot, per-clone setup of the snapshot merge driver + `post-merge` hook (and `--ci github` template) — §7.2. ✅ *exists today* |
 | `molde up` *(proposed, §11)* | One command: `git`-aware catch-up = apply pending migrations **or** `sync` from trunk + drift report. |
 
 ---
@@ -192,23 +193,33 @@ molde snapshot            # writes migrations/snapshot.json from models/
 git add migrations/snapshot.json
 ```
 
-Wire it as a git **merge driver** so the resolution is automatic:
+**Don't do this by hand — `molde init-team` wires it up** (run once per clone).
+It installs two cooperating pieces:
 
-```gitattributes
-# .gitattributes
-migrations/snapshot.json merge=molde-snapshot
-```
-```ini
-# .git/config (installed by `molde init-team`, §11 item 6)
-[merge "molde-snapshot"]
-    name = regenerate molde snapshot from models
-    driver = molde snapshot --output %A
-```
+1. A git **merge driver** — `.gitattributes` routes `snapshot.json` to it, and
+   it runs `molde snapshot --output %A` *during* the merge so the merge completes
+   without halting on conflict markers:
+   ```gitattributes
+   # .gitattributes (committed)
+   migrations/snapshot.json merge=molde-snapshot
+   ```
+   ```ini
+   # .git/config (local, per clone — written by init-team)
+   [merge "molde-snapshot"]
+       driver = molde snapshot --output %A
+   ```
+2. A **`post-merge` hook** — the merge driver runs mid-merge, when files added on
+   the other side may not be in the working tree yet, so its snapshot can be
+   stale. The hook re-derives the snapshot once the tree has settled and stages
+   the fix.
 
-> The merge driver re-derives the snapshot from the **working-tree** `.model`
-> files. In the common case (only `snapshot.json` conflicts, models merge
-> cleanly) this is fully automatic. If a `.model` file *also* conflicted, resolve
-> that text conflict first (§7.3), then run `molde snapshot` to fix the snapshot.
+So in practice: the merge **completes with no manual snapshot editing**; the hook
+leaves the correct `snapshot.json` staged; you commit it. `molde snapshot --check`
+in CI (§9.4) is the backstop that guarantees nothing stale lands on `main`.
+
+> If a `.model` file *also* conflicted (same entity edited two ways, §7.3),
+> resolve that text conflict first, then `molde snapshot` — the hook can't
+> re-derive a correct snapshot from a model that still has conflict markers.
 
 ### 7.3 Same `.model` entity edited two ways — a normal, small text merge
 Resolve the `.model` text conflict like any code merge, then regenerate the
@@ -284,12 +295,12 @@ the conveniences below. Prioritized by impact on conflict-minimization:
 | 3 | **`molde verify`** (drift check) ✅ **done** | One-step CI gate §9.3 and local "is my DB in sync with the model?" | Reads the live DB through the `.model` pipeline and diffs it against the model, comparing column types by the engine's **stored** form (`store_type_for`) so round-trip-lossy types don't read as drift. Reports drift by direction; `--check` exits non-zero. |
 | 4 | **`molde up`** | Collapses the daily catch-up (§5.1) into one command: `git`-aware apply **or** sync-from-trunk + drift report. | Thin orchestration over `apply`/`sync` + `verify`. |
 | 5 | **`molde fresh`** | Encourages the "rebuild is cheap" convention (§10.5). | Drop/recreate local DB + `apply` all. |
-| 6 | **`molde init-team`** | One-shot setup of `.gitattributes` merge driver + sample CI. Lowers adoption cost for a large team. | Writes the merge-driver config and a CI template. |
+| 6 | **`molde init-team`** ✅ **done** | One-shot, per-clone setup so the snapshot merge driver actually fires. Lowers adoption cost for a large team. | Writes the `.gitattributes` line, registers the merge driver in `.git/config`, installs a `post-merge` hook, and (`--ci github`) a CI template. |
 | 7 | **Stale help text** | `molde apply --provider` help still says "sqlite \| postgres" but 4 engines exist. | Trivial copy fix. |
 
-**Build order:** items 1–3 are **done** — the snapshot merge driver plus the
-`verify`/`snapshot --check` CI gates deliver the bulk of the
-conflict-minimization value. Items 4–6 are ergonomics; item 7 is a one-line
+**Build order:** items 1–3 and 6 are **done** — the snapshot merge driver + hook
+(`init-team`) plus the `verify`/`snapshot --check` CI gates deliver the bulk of
+the conflict-minimization value. Items 4–5 are ergonomics; item 7 is a one-line
 cleanup.
 
 ---

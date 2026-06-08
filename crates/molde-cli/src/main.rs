@@ -56,6 +56,9 @@ enum Commands {
 
     /// Format `.model` files to their canonical form.
     Fmt(commands::fmt::FmtArgs),
+
+    /// Set up the snapshot merge driver (and optional CI) for team workflows.
+    InitTeam(commands::init_team::InitTeamArgs),
 }
 
 fn main() -> anyhow::Result<()> {
@@ -72,6 +75,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Status(args) => commands::migrate::status(args),
         Commands::Undo(args) => commands::migrate::undo(args),
         Commands::Fmt(args) => commands::fmt::run(args),
+        Commands::InitTeam(args) => commands::init_team::run(args),
     }
 }
 

@@ -2,6 +2,7 @@
 
 pub mod apply;
 pub mod fmt;
+pub mod init_team;
 pub mod migrate;
 pub mod pull;
 pub mod snapshot;
