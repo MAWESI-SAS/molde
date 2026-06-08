@@ -141,6 +141,18 @@ migrations/             # versioned in git
   20260607_*.json       # migrations (IR operations; SQL is rendered on apply)
 ```
 
+## Install
+
+`molde` is a single binary. With [rustup](https://rustup.rs) installed:
+
+```bash
+cargo install --path crates/molde-cli      # → molde on your PATH
+```
+
+The only native build dependency is a C compiler (for the bundled SQLite); TLS is
+rustls (no OpenSSL). Per-OS steps (Linux/macOS/Windows), prebuilt binaries, and
+static musl builds are in [docs/install.md](docs/install.md).
+
 ## Development
 
 Standard Rust workspace (`cargo build` / `cargo test`). The
