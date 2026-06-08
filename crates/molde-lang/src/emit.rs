@@ -123,7 +123,9 @@ pub fn emit_entity(t: &Table, _model: &DatabaseModel) -> String {
     let block_indexes: Vec<&Index> = t
         .indexes
         .iter()
-        .filter(|ix| !is_inline_unique(t, ix))
+        // Hide both the inline-`unique` indexes and the conventional FK indexes;
+        // the parser re-synthesizes the latter from the `belongs-to`.
+        .filter(|ix| !is_inline_unique(t, ix) && !crate::fk_index::is_conventional_fk_index(t, ix))
         .collect();
     if !block_indexes.is_empty() {
         let _ = writeln!(s, "  indexes:");
@@ -266,6 +268,11 @@ fn emit_fk(t: &Table, fk: &ForeignKey) -> String {
     // name (only if it is not conventional)
     if fk.name != molde_core::conventions::fk_name(&t.name, &fk.principal_table) {
         parts.push(format!("name: {}", quote_scalar(&fk.name)));
+    }
+    // index: false — the FK has no covering index, so suppress the auto-index
+    // the parser would otherwise synthesize.
+    if !crate::fk_index::columns_covered(t, &fk.columns) {
+        parts.push("index: false".to_string());
     }
     format!("{{{}}}", parts.join(", "))
 }

@@ -6,8 +6,98 @@ use molde_core::model::{
     Column, DatabaseModel, DbFunction, ForeignKey, Index, PrimaryKey, ReferentialAction, Table,
     Trigger, TriggerEvent, TriggerTiming,
 };
-use molde_lang::{emit_project, parse_entity, parse_project};
+use molde_lang::{emit_entity, emit_project, parse_entity, parse_project};
 use serde_json::json;
+
+// ---- Foreign-key auto-index convention (EF-style) ----
+
+#[test]
+fn belongs_to_synthesizes_lowercase_fk_index() {
+    let src = "Order\n  fields:\n    Id: int pk identity\n    CustomerId: int\n  \
+               belongs-to:\n    Customer: {fk: CustomerId, references: Customer.Id}\n";
+    let t = parse_entity(src).unwrap();
+    let ix = t
+        .indexes
+        .iter()
+        .find(|i| i.columns == vec!["CustomerId".to_string()])
+        .expect("a backing index for the FK");
+    assert_eq!(ix.name, "ix_order_customerid");
+    assert!(!ix.is_unique, "the FK index is non-unique");
+}
+
+#[test]
+fn fk_index_false_opts_out() {
+    let src = "Order\n  fields:\n    Id: int pk identity\n    CustomerId: int\n  \
+               belongs-to:\n    Customer: {fk: CustomerId, references: Customer.Id, index: false}\n";
+    let t = parse_entity(src).unwrap();
+    assert!(t.indexes.is_empty(), "index: false suppresses the FK index");
+}
+
+#[test]
+fn fk_index_skipped_when_pk_covers_it() {
+    let src = "Link\n  fields:\n    CustomerId: int pk\n  \
+               belongs-to:\n    Customer: {fk: CustomerId, references: Customer.Id}\n";
+    let t = parse_entity(src).unwrap();
+    assert!(t.indexes.is_empty(), "the PK already covers the FK column");
+}
+
+#[test]
+fn conventional_fk_index_is_hidden_and_resynthesized() {
+    let src = "Order\n  fields:\n    Id: int pk identity\n    CustomerId: int\n  \
+               belongs-to:\n    Customer: {fk: CustomerId, references: Customer.Id}\n";
+    let t = parse_entity(src).unwrap();
+    let emitted = emit_entity(&t, &DatabaseModel::empty());
+    assert!(
+        !emitted.contains("ix_order"),
+        "the conventional FK index is hidden"
+    );
+    assert!(
+        !emitted.contains("index: false"),
+        "a covered FK is not opted out"
+    );
+    // Re-parsing brings the index back identically.
+    let t2 = parse_entity(&emitted).unwrap();
+    assert!(t2.indexes.iter().any(|i| i.name == "ix_order_customerid"));
+}
+
+#[test]
+fn fk_without_index_emits_index_false_and_round_trips() {
+    let t = Table {
+        name: "Order".into(),
+        schema: None,
+        clr_type: None,
+        comment: None,
+        columns: vec![
+            col("Id", "System.Int32", false),
+            col("CustomerId", "System.Int32", false),
+        ],
+        primary_key: Some(PrimaryKey {
+            name: "pk_order".into(),
+            columns: vec!["Id".into()],
+        }),
+        foreign_keys: vec![ForeignKey {
+            name: "fk_order_customer".into(),
+            columns: vec!["CustomerId".into()],
+            principal_table: "Customer".into(),
+            principal_schema: None,
+            principal_columns: vec!["Id".into()],
+            on_delete: ReferentialAction::NoAction,
+        }],
+        indexes: vec![],
+        triggers: vec![],
+        seed_data: vec![],
+    };
+    let emitted = emit_entity(&t, &DatabaseModel::empty());
+    assert!(
+        emitted.contains("index: false"),
+        "uncovered FK opts out explicitly"
+    );
+    let t2 = parse_entity(&emitted).unwrap();
+    assert!(
+        t2.indexes.is_empty(),
+        "no index synthesized for an opted-out FK"
+    );
+}
 
 fn col(name: &str, clr: &str, nullable: bool) -> Column {
     Column {

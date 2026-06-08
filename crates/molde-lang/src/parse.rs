@@ -129,6 +129,7 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
     let mut discriminator: Option<String> = None;
     let mut subtypes_node: Option<&Node> = None;
     let mut key_block: Option<PrimaryKey> = None;
+    let mut fk_opted_out: Vec<bool> = Vec::new();
 
     for section in &header.children {
         match section.key.as_str() {
@@ -144,7 +145,9 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
             "key" => key_block = Some(parse_key(&table.name, section)?),
             "belongs-to" => {
                 for fk in &section.children {
-                    table.foreign_keys.push(parse_fk(&table.name, fk)?);
+                    let (fk, opted_out) = parse_fk(&table.name, fk)?;
+                    fk_opted_out.push(opted_out);
+                    table.foreign_keys.push(fk);
                 }
             }
             "indexes" => {
@@ -253,6 +256,10 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
     } else {
         None
     };
+
+    // EF-style convention: each foreign key gets a backing index unless it
+    // already has a covering one or opted out with `index: false`.
+    crate::fk_index::synthesize(&mut table, &fk_opted_out);
 
     Ok(table)
 }
@@ -469,7 +476,9 @@ fn parse_key(table_name: &str, node: &Node) -> Result<PrimaryKey> {
     Ok(PrimaryKey { name, columns })
 }
 
-fn parse_fk(table_name: &str, node: &Node) -> Result<ForeignKey> {
+/// Returns the foreign key and whether it opted out of the auto-index
+/// (`index: false`).
+fn parse_fk(table_name: &str, node: &Node) -> Result<(ForeignKey, bool)> {
     let (nav, inline) = node.as_kv();
     let obj = parse_value(&inline, node.line)?;
     let map = obj
@@ -492,16 +501,21 @@ fn parse_fk(table_name: &str, node: &Node) -> Result<ForeignKey> {
         .get("name")
         .and_then(value_str)
         .unwrap_or_else(|| molde_core::conventions::fk_name(table_name, &principal_table));
+    // `index: false` opts out of the auto-generated backing index.
+    let opted_out = matches!(map.get("index").and_then(|v| v.as_bool()), Some(false));
     let _ = nav;
 
-    Ok(ForeignKey {
-        name,
-        columns,
-        principal_table,
-        principal_schema,
-        principal_columns,
-        on_delete,
-    })
+    Ok((
+        ForeignKey {
+            name,
+            columns,
+            principal_table,
+            principal_schema,
+            principal_columns,
+            on_delete,
+        },
+        opted_out,
+    ))
 }
 
 /// Parses `[schema.]Table.Col` or `[schema.]Table.[A, B]`.

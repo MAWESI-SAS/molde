@@ -223,6 +223,15 @@ belongs-to:
 | `references` | `principal_table` (+ `principal_schema`) and `principal_columns` | `Table.Col` or `schema.Table.[A,B]` |
 | `onDelete` | `on_delete` | `no_action`\|`restrict`\|`cascade`\|`set_null`\|`set_default` |
 | `name` | `name` | optional; convention `fk_<table>_<principal>` (all lowercase) |
+| `index` | — | `false` opts out of the auto-generated backing index (default `true`) |
+
+**Backing index (by convention).** Every `belongs-to` gets a non-unique index
+on its FK column(s) automatically — named `ix_<table>_<cols>` (lowercase) — just
+like EF. You don't declare it, and it is hidden from the canonical `.model`
+(re-synthesized on parse). It is **skipped** when the FK columns are already the
+leading columns of the primary key or of an existing index, or when you set
+`index: false`. A foreign key with no covering index is written back as
+`index: false`, so the state always round-trips.
 
 **Inverse** navigations (principal side) are **not modeled**: the FK is already
 described on the dependent side. Listing them would duplicate information without

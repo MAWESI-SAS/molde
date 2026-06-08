@@ -15,6 +15,7 @@
 
 mod emit;
 mod error;
+mod fk_index;
 mod fmt;
 mod outline;
 mod parse;
