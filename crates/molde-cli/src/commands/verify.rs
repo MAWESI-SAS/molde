@@ -99,12 +99,7 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
     // diff(live → desired): operations that would bring the DB up to the model.
     // Empty ⇒ the database matches the model.
     let operations = diff(&live, &desired);
-    let drift: Vec<&Operation> = operations
-        .iter()
-        // RebuildTable is a SQLite-only re-expression of the granular ALTERs, not
-        // a distinct drift — skip it so changes aren't double-counted.
-        .filter(|op| !matches!(op, Operation::RebuildTable { .. }))
-        .collect();
+    let drift: Vec<&Operation> = operations.iter().filter(|op| is_schema_drift(op)).collect();
 
     if drift.is_empty() {
         ui::ok("the database is in sync with the model. No drift.");
@@ -201,6 +196,23 @@ fn report(drift: &[&Operation]) {
     }
 }
 
+/// Is this operation real *schema* drift? `verify` compares structure, so it
+/// excludes:
+/// - `RebuildTable` — a SQLite-only re-expression of the granular ALTERs (would
+///   double-count), and
+/// - seed-data ops (`InsertData`/`UpdateData`/`DeleteData`, EF's HasData): the
+///   scaffolder never reads data rows back, so a model with a `seed:` block would
+///   otherwise always report its rows as drift even when they are in the database.
+fn is_schema_drift(op: &Operation) -> bool {
+    !matches!(
+        op,
+        Operation::RebuildTable { .. }
+            | Operation::InsertData { .. }
+            | Operation::UpdateData { .. }
+            | Operation::DeleteData { .. }
+    )
+}
+
 /// Map an operation to its drift direction and a human label.
 fn classify(op: &Operation) -> (Direction, String) {
     use Direction::*;
@@ -251,8 +263,35 @@ fn classify(op: &Operation) -> (Direction, String) {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify, Direction};
+    use super::{classify, is_schema_drift, Direction};
     use molde_core::Operation;
+
+    #[test]
+    fn seed_and_rebuild_ops_are_not_schema_drift() {
+        // Schema changes count…
+        assert!(is_schema_drift(&Operation::DropTable {
+            schema: None,
+            name: "T".into(),
+        }));
+        // …but seed data and the SQLite RebuildTable re-expression do not:
+        // the scaffolder never reads rows back, so seeds would always read as drift.
+        assert!(!is_schema_drift(&Operation::InsertData {
+            schema: None,
+            table: "T".into(),
+            row: Default::default(),
+        }));
+        assert!(!is_schema_drift(&Operation::DeleteData {
+            schema: None,
+            table: "T".into(),
+            key: Default::default(),
+        }));
+        assert!(!is_schema_drift(&Operation::UpdateData {
+            schema: None,
+            table: "T".into(),
+            key: Default::default(),
+            values: Default::default(),
+        }));
+    }
 
     #[test]
     fn classify_maps_direction_and_label() {
