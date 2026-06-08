@@ -140,11 +140,12 @@ async fn read_constraints(pool: &PgPool, schema: &mut DbSchema) -> Result<()> {
         .context("reading constraints")?
     {
         let kind: String = row.get(2);
+        let def: String = row.get(3);
         let info = ConstraintInfo {
             table: row.get(0),
             name: row.get(1),
             kind: kind.chars().next().unwrap_or('?'),
-            definition: row.get(3),
+            definition: normalize_constraint_def(&def),
         };
         schema.constraints.insert(info.key(), info);
     }
@@ -433,6 +434,121 @@ fn section(s: &mut String, title: &str) {
     s.push_str(&format!("-- ===== {title} =====\n"));
 }
 
+/// Canonicalize a constraint definition so cosmetic re-normalizations don't read
+/// as conflicts. PostgreSQL deparses a check like `… = ANY ((ARRAY[a, b])::text[])`
+/// but, once that text is re-applied, the parser distributes the cast over the
+/// array elements and it deparses as `… = ANY (ARRAY[(a)::text, (b)::text])`. The
+/// two are identical; we rewrite the whole-array-cast form to the distributed
+/// form (what PostgreSQL stores), so a freshly synced check does not show up as a
+/// conflict on the next run. Definitions without that pattern pass through.
+fn normalize_constraint_def(def: &str) -> String {
+    let mut s = def.to_string();
+    let mut from = 0;
+    while let Some(rel) = s[from..].find("(ARRAY[") {
+        let start = from + rel;
+        let lbracket = start + "(ARRAY".len(); // index of '['
+        let Some(rbracket) = matching_bracket(&s, lbracket) else {
+            from = start + 7;
+            continue;
+        };
+        // Right after the inner `]` we need `)::<base>[]` for this to be a
+        // whole-array cast; otherwise it is just an ARRAY[...] in some context.
+        let tail = &s[rbracket + 1..];
+        let Some(after) = tail.strip_prefix(")::") else {
+            from = start + 7;
+            continue;
+        };
+        let Some(arr_pos) = after.find("[]") else {
+            from = start + 7;
+            continue;
+        };
+        let base = after[..arr_pos].trim();
+        if base.is_empty() {
+            from = start + 7;
+            continue;
+        }
+        let inner = &s[lbracket + 1..rbracket];
+        let distributed: Vec<String> = split_top_commas(inner)
+            .iter()
+            .map(|e| format!("({})::{base}", e.trim()))
+            .collect();
+        let replacement = format!("ARRAY[{}]", distributed.join(", "));
+        let end = rbracket + 1 + 3 + arr_pos + 2; // ")::" + base + "[]"
+        s.replace_range(start..end, &replacement);
+        from = start + replacement.len();
+    }
+    s
+}
+
+/// Index of the `]` matching the `[` at `open`, respecting nesting and single
+/// quotes. Returns `None` if unbalanced.
+fn matching_bracket(s: &str, open: usize) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut depth = 0i32;
+    let mut in_str = false;
+    for (i, &b) in bytes.iter().enumerate().skip(open) {
+        let c = b as char;
+        if in_str {
+            if c == '\'' {
+                in_str = false;
+            }
+        } else {
+            match c {
+                '\'' => in_str = true,
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+/// Split on top-level commas, ignoring those inside parens/brackets or quotes.
+fn split_top_commas(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut cur = String::new();
+    for c in s.chars() {
+        if in_str {
+            cur.push(c);
+            if c == '\'' {
+                in_str = false;
+            }
+            continue;
+        }
+        match c {
+            '\'' => {
+                in_str = true;
+                cur.push(c);
+            }
+            '(' | '[' => {
+                depth += 1;
+                cur.push(c);
+            }
+            ')' | ']' => {
+                depth -= 1;
+                cur.push(c);
+            }
+            ',' if depth == 0 => {
+                out.push(cur.trim().to_string());
+                cur.clear();
+            }
+            _ => cur.push(c),
+        }
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur.trim().to_string());
+    }
+    out
+}
+
 /// Postgres connection URL with the password masked.
 fn redact_url(conn: &str) -> String {
     if let Some((scheme, rest)) = conn.split_once("://") {
@@ -476,6 +592,21 @@ mod tests {
         assert!(sql.contains("CREATE INDEX IF NOT EXISTS ix_invoice"));
         // Tables come before indexes.
         assert!(sql.find("NEW TABLES").unwrap() < sql.find("INDEXES").unwrap());
+    }
+
+    #[test]
+    fn normalizes_array_cast_check_to_distributed_form() {
+        let factored = "CHECK (((type)::text = ANY ((ARRAY['a'::character varying, 'b'::character varying])::text[])))";
+        let distributed = "CHECK (((type)::text = ANY (ARRAY[('a'::character varying)::text, ('b'::character varying)::text])))";
+        // The whole-array-cast form canonicalizes to the distributed form…
+        assert_eq!(normalize_constraint_def(factored), distributed);
+        // …and the distributed form is left unchanged (idempotent).
+        assert_eq!(normalize_constraint_def(distributed), distributed);
+        // Definitions without the pattern pass through untouched.
+        let fk = "FOREIGN KEY (\"x\") REFERENCES \"y\" (\"id\")";
+        assert_eq!(normalize_constraint_def(fk), fk);
+        let simple = "CHECK ((amount > 0))";
+        assert_eq!(normalize_constraint_def(simple), simple);
     }
 
     #[test]
