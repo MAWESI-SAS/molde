@@ -64,8 +64,9 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
 
     let connection = ui::resolve_connection(args.connection, args.no_input)?;
     let provider = match args.provider.as_deref() {
-        Some(p) => Provider::parse(p)
-            .with_context(|| format!("unsupported provider: '{p}' (use sqlite | postgres)"))?,
+        Some(p) => Provider::parse(p).with_context(|| {
+            format!("unsupported provider: '{p}' (use sqlite | postgres | mysql | sqlserver)")
+        })?,
         None => Provider::from_url(&connection)
             .context("could not infer the provider from the URL; use --provider")?,
     };

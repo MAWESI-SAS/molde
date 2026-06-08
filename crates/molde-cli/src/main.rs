@@ -48,6 +48,12 @@ enum Commands {
     /// Check whether a live database matches the model (drift check).
     Verify(commands::verify::VerifyArgs),
 
+    /// Catch the local database up (apply or sync from trunk) + drift report.
+    Up(commands::up::UpArgs),
+
+    /// Rebuild the local database from migrations (roll back all, re-apply).
+    Fresh(commands::fresh::FreshArgs),
+
     /// List known migrations.
     Status(commands::migrate::StatusArgs),
 
@@ -72,6 +78,8 @@ fn main() -> anyhow::Result<()> {
         Commands::Apply(args) => commands::apply::run(args),
         Commands::Sync(args) => commands::sync::run(args),
         Commands::Verify(args) => commands::verify::run(args),
+        Commands::Up(args) => commands::up::run(args),
+        Commands::Fresh(args) => commands::fresh::run(args),
         Commands::Status(args) => commands::migrate::status(args),
         Commands::Undo(args) => commands::migrate::undo(args),
         Commands::Fmt(args) => commands::fmt::run(args),

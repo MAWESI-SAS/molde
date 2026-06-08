@@ -16,7 +16,7 @@ pub struct ApplyArgs {
     #[arg(long, short = 'c', env = "DATABASE_URL")]
     pub connection: Option<String>,
 
-    /// Engine: sqlite | postgres. Inferred from the URL if omitted.
+    /// Engine: sqlite | postgres | mysql | sqlserver. Inferred from the URL if omitted.
     #[arg(long)]
     pub provider: Option<String>,
 
@@ -109,8 +109,9 @@ pub fn run(args: ApplyArgs) -> anyhow::Result<()> {
 /// Resolve the provider: explicit (`--provider`) or inferred from the URL.
 fn resolve_provider(explicit: Option<&str>, url: &str) -> anyhow::Result<Provider> {
     match explicit {
-        Some(p) => Provider::parse(p)
-            .with_context(|| format!("unsupported provider: '{p}' (use sqlite | postgres)")),
+        Some(p) => Provider::parse(p).with_context(|| {
+            format!("unsupported provider: '{p}' (use sqlite | postgres | mysql | sqlserver)")
+        }),
         None => Provider::from_url(url)
             .context("could not infer the provider from the URL; specify it with --provider"),
     }

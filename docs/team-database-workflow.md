@@ -86,7 +86,8 @@ All exist today unless marked *(proposed)*.
 | `molde snapshot` | Regenerate `snapshot.json` from `.model` with no migration (or verify with `--check`) — powers the merge driver (§7.2). ✅ *exists today* |
 | `molde verify` | Check whether a live database matches the model (drift check). `--check` exits non-zero on drift — CI gate §9.3 and the local "is my DB in sync?" answer. ✅ *exists today* |
 | `molde init-team` | One-shot, per-clone setup of the snapshot merge driver + `post-merge` hook (and `--ci github` template) — §7.2. ✅ *exists today* |
-| `molde up` *(proposed, §11)* | One command: `git`-aware catch-up = apply pending migrations **or** `sync` from trunk + drift report. |
+| `molde up` | Catch the local DB up in one command: apply pending migrations (or `--from-trunk` to additively sync), then a drift report. ✅ *exists today* |
+| `molde fresh` | Rebuild the local DB from migrations (roll back all, re-apply) — the "rebuilding is cheap" convention (§10). ✅ *exists today* |
 
 ---
 
@@ -115,13 +116,12 @@ applies the exact reviewed SQL).
 
 ```bash
 git pull
-molde up            # proposed: applies pending migrations, or sync-fast-forwards
-                    # from trunk, then reports drift.
-# Today, until `molde up` exists:
-#   git pull && molde apply            # replay pending migrations on local DB
-#   # …or fast-forward from the trunk DB without replay:
-#   molde sync --source "$TRUNK_DB" --target "$LOCAL_DB" --yes
+molde up                         # apply pending migrations, then report drift
+#   molde up --from-trunk "$TRUNK_DB"   # …or fast-forward from trunk (additive sync)
 ```
+
+`molde up` is the one-command catch-up. Under the hood it is either
+`molde apply` (replay) or `molde sync` from trunk, followed by `molde verify`.
 
 `apply` is deterministic (prod-like) but replays every pending migration; `sync`
 is instant (copies the live trunk structure additively) and preserves your local
@@ -276,40 +276,38 @@ On merge to `main`: apply migrations to the **trunk DB** (§8).
    reached `main`. To change schema, add a new migration.
 3. **One logical schema change per migration**, named meaningfully.
 4. **Always commit `.model` + migration + `snapshot.json` together.**
-5. **Rebuild from scratch is cheap and encouraged.** A `molde fresh` (proposed)
-   = drop local DB + `apply` all migrations. Doing this regularly prevents drift.
+5. **Rebuild from scratch is cheap and encouraged.** `molde fresh` rolls back all
+   migrations and re-applies them. Doing this regularly prevents drift.
 6. **`sync` is read-only catch-up, trunk → local. Never local → anything shared.**
 7. **Run `molde fmt` before every commit** (and enforce in CI).
 
 ---
 
-## 11. Gap inventory — what molde still needs for this to be frictionless
+## 11. Gap inventory — all closed ✅
 
-Everything above works **today** with `git + molde apply/migrate/sync`, except
-the conveniences below. Prioritized by impact on conflict-minimization:
+The whole workflow is supported by molde today. The pieces, and how they landed:
 
-| # | Gap | Why it matters | Shape |
-|---|---|---|---|
-| 1 | **`molde snapshot`** ✅ **done** | The #1 remaining merge friction (§7.2). Regenerating the snapshot from the merged models makes concurrent migrations conflict-free. | `molde snapshot [--from-models D] [--output P]` regenerates `snapshot.json` byte-identically to `migrate`. Wire as a `.gitattributes` merge driver (`driver = molde snapshot --output %A`). |
-| 2 | **`molde snapshot --check`** ✅ **done** | CI gate §9.4; lets devs detect a stale snapshot before pushing. | Same command, `--check` exits non-zero when the on-disk snapshot drifted from the models. |
-| 3 | **`molde verify`** (drift check) ✅ **done** | One-step CI gate §9.3 and local "is my DB in sync with the model?" | Reads the live DB through the `.model` pipeline and diffs it against the model, comparing column types by the engine's **stored** form (`store_type_for`) so round-trip-lossy types don't read as drift. Reports drift by direction; `--check` exits non-zero. |
-| 4 | **`molde up`** | Collapses the daily catch-up (§5.1) into one command: `git`-aware apply **or** sync-from-trunk + drift report. | Thin orchestration over `apply`/`sync` + `verify`. |
-| 5 | **`molde fresh`** | Encourages the "rebuild is cheap" convention (§10.5). | Drop/recreate local DB + `apply` all. |
-| 6 | **`molde init-team`** ✅ **done** | One-shot, per-clone setup so the snapshot merge driver actually fires. Lowers adoption cost for a large team. | Writes the `.gitattributes` line, registers the merge driver in `.git/config`, installs a `post-merge` hook, and (`--ci github`) a CI template. |
-| 7 | **Stale help text** | `molde apply --provider` help still says "sqlite \| postgres" but 4 engines exist. | Trivial copy fix. |
+| # | Piece | What it does |
+|---|---|---|
+| 1 | **`molde snapshot`** ✅ | Regenerates `snapshot.json` from the merged models, byte-identically to `migrate` — the basis of the merge driver (§7.2). |
+| 2 | **`molde snapshot --check`** ✅ | CI gate §9.4: exits non-zero when the on-disk snapshot drifted from the models. |
+| 3 | **`molde verify`** ✅ | Drift check (§9.3 / local). Diffs the live DB against the model, comparing types by the engine's **stored** form (`store_type_for`) so round-trip-lossy types don't read as drift. `--check` exits non-zero. |
+| 4 | **`molde up`** ✅ | One-command daily catch-up: `apply` (or `--from-trunk` additive sync) + `verify` drift report. |
+| 5 | **`molde fresh`** ✅ | Rebuild the local DB from migrations (roll back all, re-apply); confirms first (destructive). |
+| 6 | **`molde init-team`** ✅ | Per-clone setup: `.gitattributes` line + merge driver in `.git/config` + `post-merge` hook (+ `--ci github` template). |
+| 7 | **Provider help text** ✅ | `--provider` help now lists all four engines (sqlite \| postgres \| mysql \| sqlserver). |
 
-**Build order:** items 1–3 and 6 are **done** — the snapshot merge driver + hook
-(`init-team`) plus the `verify`/`snapshot --check` CI gates deliver the bulk of
-the conflict-minimization value. Items 4–5 are ergonomics; item 7 is a one-line
-cleanup.
+The snapshot merge driver + hook (`init-team`) plus the `verify` / `snapshot
+--check` CI gates are what deliver the conflict-minimization; `up` and `fresh`
+are the daily-loop ergonomics on top.
 
 ---
 
 ## 12. TL;DR for the team
 
 - **Edit `models/`. Run `molde migrate`. Commit model + migration. Open a PR.**
-- **To catch up: `git pull` then `molde sync` from trunk (fast) or `molde apply`
-  (prod-accurate).**
+- **To catch up: `git pull` then `molde up`** (replays migrations, or
+  `--from-trunk` to additively sync), then reports drift.
 - **Your local DB is disposable.** The model in git is the truth.
 - **Snapshot conflicts auto-resolve** (regenerate from the model); everything
   else is a normal, small git merge or a real design decision CI will flag.
