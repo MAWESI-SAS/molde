@@ -1,9 +1,9 @@
-//! Provider de SQLite.
+//! SQLite provider.
 //!
-//! SQLite tiene un `ALTER TABLE` muy limitado: no soporta alterar el tipo de una
-//! columna in-place (EF lo resuelve con el patrón "rebuild": crear tabla nueva,
-//! copiar datos, renombrar). En Fase 0 emitimos lo soportado directamente y
-//! marcamos `AlterColumn` como no soportado todavía.
+//! SQLite has a very limited `ALTER TABLE`: it does not support altering a
+//! column's type in-place (EF solves this with the "rebuild" pattern: create a
+//! new table, copy data, rename). In Phase 0 we emit what is supported directly
+//! and mark `AlterColumn` as not supported yet.
 
 use molde_core::diff::Operation;
 use molde_core::model::{Column, Index, ReferentialAction, Table};
@@ -41,8 +41,8 @@ impl SqliteGenerator {
     fn create_table(&self, table: &Table) -> Result<String, ProviderError> {
         let mut lines: Vec<String> = Vec::new();
 
-        // En SQLite, una PK simple de tipo INTEGER suele declararse inline para
-        // obtener el comportamiento de autoincremento (alias de ROWID).
+        // In SQLite, a single INTEGER PK is usually declared inline to get the
+        // autoincrement behavior (alias of ROWID).
         let single_int_pk = table
             .primary_key
             .as_ref()
@@ -60,7 +60,7 @@ impl SqliteGenerator {
             }
         }
 
-        // PK compuesta → constraint a nivel de tabla.
+        // Composite PK → table-level constraint.
         if let Some(pk) = &table.primary_key {
             if pk.columns.len() > 1 {
                 let cols: Vec<String> = pk.columns.iter().map(|c| self.quote_ident(c)).collect();
@@ -68,8 +68,8 @@ impl SqliteGenerator {
             }
         }
 
-        // FKs inline: SQLite no soporta ALTER ADD FK, pero sí permite declararlas
-        // dentro de CREATE TABLE (incluso con referencias a tablas aún no creadas).
+        // Inline FKs: SQLite does not support ALTER ADD FK, but it does allow
+        // declaring them inside CREATE TABLE (even referencing not-yet-created tables).
         for fk in &table.foreign_keys {
             let cols: Vec<String> = fk.columns.iter().map(|c| self.quote_ident(c)).collect();
             let pcols: Vec<String> = fk
@@ -111,11 +111,11 @@ impl SqlGenerator for SqliteGenerator {
             return Ok(st.clone());
         }
         let clr = column.clr_type.as_deref().unwrap_or("");
-        // SQLite usa afinidades de tipo; mapeo conservador alineado con EF.
+        // SQLite uses type affinities; conservative mapping aligned with EF.
         let mapped = match clr {
             "System.Int16" | "System.Int32" | "System.Int64" | "System.Boolean" => "INTEGER",
             "System.Single" | "System.Double" => "REAL",
-            "System.Decimal" => "TEXT", // EF guarda decimal como TEXT en SQLite
+            "System.Decimal" => "TEXT", // EF stores decimal as TEXT in SQLite
             "System.DateTime" | "System.DateTimeOffset" | "System.Guid" | "System.String" => "TEXT",
             "System.Byte[]" => "BLOB",
             _ => {
@@ -145,10 +145,10 @@ impl SqlGenerator for SqliteGenerator {
                 self.quote_ident(name)
             )],
             Operation::AlterColumn { table, new, .. } => {
-                // SQLite no soporta ALTER COLUMN; el cambio de tipo se materializa
-                // mediante la `RebuildTable` que `diff()` emite para esta tabla.
+                // SQLite does not support ALTER COLUMN; the type change is
+                // materialized via the `RebuildTable` that `diff()` emits for this table.
                 tracing::debug!(
-                    "SQLite: ALTER COLUMN '{}.{}' se aplica vía RebuildTable",
+                    "SQLite: ALTER COLUMN '{}.{}' is applied via RebuildTable",
                     table,
                     new.name
                 );
@@ -158,14 +158,14 @@ impl SqlGenerator for SqliteGenerator {
             Operation::DropIndex { name, .. } => {
                 vec![format!("DROP INDEX {};", self.quote_ident(name))]
             }
-            // SQLite no permite añadir/quitar FKs con ALTER TABLE (requiere
-            // reconstruir la tabla). Se omiten con aviso: las tablas e índices
-            // se crean igual; la integridad referencial no se aplica.
+            // SQLite does not allow adding/removing FKs with ALTER TABLE (it
+            // requires rebuilding the table). They are skipped with a warning:
+            // tables and indexes are still created; referential integrity is not enforced.
             Operation::AddForeignKey {
                 table, foreign_key, ..
             } => {
                 tracing::warn!(
-                    "SQLite no soporta ALTER ADD FOREIGN KEY; se omite '{}' en '{}'",
+                    "SQLite does not support ALTER ADD FOREIGN KEY; skipping '{}' on '{}'",
                     foreign_key.name,
                     table
                 );
@@ -173,7 +173,7 @@ impl SqlGenerator for SqliteGenerator {
             }
             Operation::DropForeignKey { table, name, .. } => {
                 tracing::warn!(
-                    "SQLite no soporta ALTER DROP FOREIGN KEY; se omite '{}' en '{}'",
+                    "SQLite does not support ALTER DROP FOREIGN KEY; skipping '{}' on '{}'",
                     name,
                     table
                 );
@@ -223,10 +223,10 @@ impl SqliteGenerator {
         )
     }
 
-    /// Reconstrucción de tabla estilo EF: crea una tabla temporal con el esquema
-    /// final (FKs inline), copia los datos de las columnas comunes, elimina la
-    /// original, renombra la temporal y recrea los índices. Es la vía de SQLite
-    /// para `ALTER COLUMN` y alta/baja de FK sobre tablas existentes.
+    /// EF-style table rebuild: creates a temporary table with the final schema
+    /// (inline FKs), copies the data of the common columns, drops the original,
+    /// renames the temporary one, and recreates the indexes. It is SQLite's path
+    /// for `ALTER COLUMN` and adding/removing FKs on existing tables.
     fn rebuild_table(
         &self,
         table: &Table,
@@ -257,7 +257,7 @@ impl SqliteGenerator {
             self.quote_ident(&tmp_name),
             self.quote_ident(orig),
         ));
-        // Los índices cayeron con la tabla original; se recrean sobre la nueva.
+        // The indexes were dropped with the original table; recreate them on the new one.
         for idx in &table.indexes {
             out.push(self.create_index(orig, idx));
         }

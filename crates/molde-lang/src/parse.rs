@@ -1,5 +1,5 @@
-//! Parser: texto `.model` → IR. Acepta la forma canónica y el azúcar de
-//! escritura (`owns`, `subtypes`/`discriminator`, `enum[…]`).
+//! Parser: `.model` text → IR. Accepts the canonical form and the authoring
+//! sugar (`owns`, `subtypes`/`discriminator`, `enum[…]`).
 
 use std::collections::BTreeMap;
 
@@ -14,7 +14,7 @@ use crate::tree::{parse_tree, Node};
 use crate::types::{is_logical, logical_to_clr};
 use crate::value::{parse_value, split_top_level, tokenize_ws, unquote};
 
-/// Globales leídas de `database.model`.
+/// Globals read from `database.model`.
 #[derive(Debug, Default)]
 pub struct DbGlobals {
     pub default_schema: Option<String>,
@@ -24,8 +24,8 @@ pub struct DbGlobals {
     pub raw_objects: Vec<String>,
 }
 
-/// Parsea un proyecto completo: cada archivo `(nombre, contenido)`. El archivo
-/// `database.model` aporta las globales; el resto, una tabla cada uno.
+/// Parses a full project: each file `(name, contents)`. The `database.model`
+/// file provides the globals; the rest, one table each.
 pub fn parse_project(files: &[(&str, &str)]) -> Result<DatabaseModel> {
     let mut model = DatabaseModel::empty();
     model.format_version = IR_FORMAT_VERSION;
@@ -46,7 +46,7 @@ pub fn parse_project(files: &[(&str, &str)]) -> Result<DatabaseModel> {
     Ok(model)
 }
 
-/// Parsea el archivo global `database.model`.
+/// Parses the global `database.model` file.
 pub fn parse_database(src: &str) -> Result<DbGlobals> {
     parse_database_inner(src).map_err(|e| e.with_source(src))
 }
@@ -82,7 +82,7 @@ fn parse_database_inner(src: &str) -> Result<DbGlobals> {
             other => {
                 return Err(MoldeError::new(
                     node.line,
-                    format!("clave desconocida en database.model: '{other}'"),
+                    format!("unknown key in database.model: '{other}'"),
                 ))
             }
         }
@@ -90,7 +90,7 @@ fn parse_database_inner(src: &str) -> Result<DbGlobals> {
     Ok(g)
 }
 
-/// Parsea un archivo de entidad a una `Table`.
+/// Parses an entity file into a `Table`.
 pub fn parse_entity(src: &str) -> Result<Table> {
     parse_entity_inner(src).map_err(|e| e.with_source(src))
 }
@@ -99,11 +99,11 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
     let nodes = parse_tree(src)?;
     let header = nodes
         .first()
-        .ok_or_else(|| MoldeError::new(0, "archivo de entidad vacío"))?;
+        .ok_or_else(|| MoldeError::new(0, "empty entity file"))?;
     if nodes.len() > 1 {
         return Err(MoldeError::new(
             nodes[1].line,
-            "un archivo de entidad define una sola tabla",
+            "an entity file defines a single table",
         ));
     }
     let table_name = if header.inline.is_empty() {
@@ -166,13 +166,13 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
             other => {
                 return Err(MoldeError::new(
                     section.line,
-                    format!("sección desconocida en entidad: '{other}'"),
+                    format!("unknown section in entity: '{other}'"),
                 ))
             }
         }
     }
 
-    // Azúcar TPH: columna discriminadora + columnas de subtipos (nullable).
+    // TPH sugar: discriminator column + subtype columns (nullable).
     if let Some(disc) = &discriminator {
         if !builds.iter().any(|b| b.col.name == *disc) {
             builds.push(ColumnBuild {
@@ -205,7 +205,7 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
                 }
                 let (fname, frest) = part
                     .split_once(':')
-                    .ok_or_else(|| MoldeError::new(st.line, "campo de subtipo inválido"))?;
+                    .ok_or_else(|| MoldeError::new(st.line, "invalid subtype field"))?;
                 let mut cb = parse_field_parts(fname.trim(), frest.trim(), st.line, true)?;
                 for b in &mut cb {
                     if !builds.iter().any(|x| x.col.name == b.col.name) {
@@ -216,7 +216,7 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
         }
     }
 
-    // Volcar columnas + índices únicos en línea + PK.
+    // Dump columns + inline unique indexes + PK.
     let mut pk_cols: Vec<String> = Vec::new();
     let mut pk_name: Option<String> = None;
     for b in builds {
@@ -254,17 +254,17 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
     Ok(table)
 }
 
-/// Resultado intermedio del parseo de un campo.
+/// Intermediate result of parsing a field.
 #[derive(Debug, Clone)]
 struct ColumnBuild {
     col: Column,
-    /// `Some(None)` = PK con nombre convencional; `Some(Some(n))` = PK con nombre.
+    /// `Some(None)` = PK with conventional name; `Some(Some(n))` = PK with name.
     pk: Option<Option<String>>,
     unique: bool,
 }
 
-/// Parsea una línea de campo `Name: type facets…`. Puede producir varias columnas
-/// (owned types). `force_nullable` se usa para columnas de subtipos TPH.
+/// Parses a field line `Name: type facets…`. May produce several columns
+/// (owned types). `force_nullable` is used for TPH subtype columns.
 fn parse_field(node: &Node, force_nullable: bool) -> Result<Vec<ColumnBuild>> {
     let (name, rest) = node.as_kv();
     parse_field_parts(&name, &rest, node.line, force_nullable)
@@ -278,10 +278,13 @@ fn parse_field_parts(
 ) -> Result<Vec<ColumnBuild>> {
     let tokens = tokenize_ws(rest);
     if tokens.is_empty() {
-        return Err(MoldeError::new(line, format!("campo '{name}' sin tipo")));
+        return Err(MoldeError::new(
+            line,
+            format!("field '{name}' without type"),
+        ));
     }
 
-    // Owned type: `owns Tipo {campos…}` → columnas con prefijo.
+    // Owned type: `owns Type {fields…}` → prefixed columns.
     if tokens[0] == "owns" {
         let inner = tokens.iter().skip(2).cloned().collect::<Vec<_>>().join(" ");
         let inner = inner.trim().trim_matches(|c| c == '{' || c == '}');
@@ -292,7 +295,7 @@ fn parse_field_parts(
             }
             let (oname, orest) = part
                 .split_once(':')
-                .ok_or_else(|| MoldeError::new(line, "campo owned inválido"))?;
+                .ok_or_else(|| MoldeError::new(line, "invalid owned field"))?;
             let mut cb = parse_field_parts(oname.trim(), orest.trim(), line, false)?;
             for b in &mut cb {
                 b.col.name = format!("{name}_{}", b.col.name);
@@ -302,7 +305,7 @@ fn parse_field_parts(
         return Ok(out);
     }
 
-    // Enum: `enum[A,B] as=string|int` → columna escalar; valores descartados.
+    // Enum: `enum[A,B] as=string|int` → scalar column; values discarded.
     let (type_token, facet_tokens): (String, Vec<String>) = if tokens[0].starts_with("enum[") {
         let nullable = tokens[0].ends_with('?');
         let mut as_type = "string".to_string();
@@ -377,20 +380,20 @@ fn parse_column(
         } else if let Some(v) = f.strip_prefix("maxlen=") {
             col.max_length = Some(
                 v.parse()
-                    .map_err(|_| MoldeError::new(line, format!("maxlen inválido: '{v}'")))?,
+                    .map_err(|_| MoldeError::new(line, format!("invalid maxlen: '{v}'")))?,
             );
         } else if let Some(v) = f.strip_prefix("precision=") {
             let mut it = v.split(',');
             let p = it
                 .next()
                 .and_then(|x| x.trim().parse().ok())
-                .ok_or_else(|| MoldeError::new(line, format!("precision inválida: '{v}'")))?;
+                .ok_or_else(|| MoldeError::new(line, format!("invalid precision: '{v}'")))?;
             col.precision = Some(p);
             if let Some(s) = it.next() {
                 col.scale = Some(
                     s.trim()
                         .parse()
-                        .map_err(|_| MoldeError::new(line, format!("scale inválida: '{s}'")))?,
+                        .map_err(|_| MoldeError::new(line, format!("invalid scale: '{s}'")))?,
                 );
             }
         } else if let Some(v) = f.strip_prefix("default=") {
@@ -406,19 +409,19 @@ fn parse_column(
         } else if let Some(v) = f.strip_prefix("comment=") {
             col.comment = Some(unquote(v));
         } else if f.starts_with("as=") {
-            // ignorada fuera de enum
+            // ignored outside enum
         } else {
-            return Err(MoldeError::new(line, format!("faceta desconocida: '{f}'")));
+            return Err(MoldeError::new(line, format!("unknown facet: '{f}'")));
         }
     }
 
     Ok(ColumnBuild { col, pk, unique })
 }
 
-/// Separa el token de tipo en `(texto, nullable, era_citado)`.
+/// Splits the type token into `(text, nullable, was_quoted)`.
 fn parse_type_token(tok: &str) -> (String, bool, bool) {
     if tok.starts_with('"') {
-        // Buscar la comilla de cierre respetando escapes.
+        // Find the closing quote, respecting escapes.
         let bytes: Vec<char> = tok.chars().collect();
         let mut i = 1;
         while i < bytes.len() {
@@ -458,7 +461,7 @@ fn parse_key(table_name: &str, node: &Node) -> Result<PrimaryKey> {
         }
     }
     if columns.is_empty() {
-        return Err(MoldeError::new(node.line, "bloque 'key:' sin columnas"));
+        return Err(MoldeError::new(node.line, "'key:' block without columns"));
     }
     Ok(PrimaryKey { name, columns })
 }
@@ -468,14 +471,14 @@ fn parse_fk(table_name: &str, node: &Node) -> Result<ForeignKey> {
     let obj = parse_value(&inline, node.line)?;
     let map = obj
         .as_object()
-        .ok_or_else(|| MoldeError::new(node.line, "se esperaba un objeto en belongs-to"))?;
+        .ok_or_else(|| MoldeError::new(node.line, "expected an object in belongs-to"))?;
 
-    let columns =
-        value_strlist(map.get("fk")).ok_or_else(|| MoldeError::new(node.line, "FK sin 'fk'"))?;
+    let columns = value_strlist(map.get("fk"))
+        .ok_or_else(|| MoldeError::new(node.line, "FK without 'fk'"))?;
     let refs = map
         .get("references")
         .and_then(value_str)
-        .ok_or_else(|| MoldeError::new(node.line, "FK sin 'references'"))?;
+        .ok_or_else(|| MoldeError::new(node.line, "FK without 'references'"))?;
     let (principal_schema, principal_table, principal_columns) =
         parse_references(&refs, node.line)?;
     let on_delete = match map.get("onDelete").and_then(value_str) {
@@ -498,7 +501,7 @@ fn parse_fk(table_name: &str, node: &Node) -> Result<ForeignKey> {
     })
 }
 
-/// Parsea `[schema.]Table.Col` o `[schema.]Table.[A, B]`.
+/// Parses `[schema.]Table.Col` or `[schema.]Table.[A, B]`.
 fn parse_references(s: &str, line: usize) -> Result<(Option<String>, String, Vec<String>)> {
     if let Some(pos) = s.find(".[") {
         let left = &s[..pos];
@@ -512,7 +515,7 @@ fn parse_references(s: &str, line: usize) -> Result<(Option<String>, String, Vec
     } else {
         let pos = s
             .rfind('.')
-            .ok_or_else(|| MoldeError::new(line, format!("referencia inválida: '{s}'")))?;
+            .ok_or_else(|| MoldeError::new(line, format!("invalid reference: '{s}'")))?;
         let left = &s[..pos];
         let col = s[pos + 1..].to_string();
         let (schema, table) = split_principal(left);
@@ -532,7 +535,7 @@ fn parse_index(node: &Node) -> Result<Index> {
     let obj = parse_value(&inline, node.line)?;
     let map = obj
         .as_object()
-        .ok_or_else(|| MoldeError::new(node.line, "se esperaba un objeto de índice"))?;
+        .ok_or_else(|| MoldeError::new(node.line, "expected an index object"))?;
     let columns = value_strlist(map.get("on")).unwrap_or_default();
     Ok(Index {
         name,
@@ -551,7 +554,7 @@ fn parse_trigger(table: &Table, node: &Node) -> Result<Trigger> {
         .child("timing")
         .map(|n| parse_timing(&n.inline, n.line))
         .transpose()?
-        .ok_or_else(|| MoldeError::new(node.line, "trigger sin 'timing'"))?;
+        .ok_or_else(|| MoldeError::new(node.line, "trigger without 'timing'"))?;
     let events = match node.child("events") {
         Some(n) => {
             let v = parse_value(&n.inline, n.line)?;
@@ -585,11 +588,11 @@ fn parse_trigger(table: &Table, node: &Node) -> Result<Trigger> {
 }
 
 fn parse_seed_row(node: &Node) -> Result<BTreeMap<String, Value>> {
-    // Un ítem de seed es `- {..}`: el objeto está en el texto crudo del ítem.
+    // A seed item is `- {..}`: the object is in the raw text of the item.
     let v = parse_value(&node.inline, node.line)?;
     let map = v
         .as_object()
-        .ok_or_else(|| MoldeError::new(node.line, "fila de seed inválida"))?;
+        .ok_or_else(|| MoldeError::new(node.line, "invalid seed row"))?;
     Ok(map.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
 }
 
@@ -603,7 +606,7 @@ fn parse_action(s: &str, line: usize) -> Result<ReferentialAction> {
         other => {
             return Err(MoldeError::new(
                 line,
-                format!("onDelete inválido: '{other}'"),
+                format!("invalid onDelete: '{other}'"),
             ))
         }
     })
@@ -614,7 +617,7 @@ fn parse_timing(s: &str, line: usize) -> Result<TriggerTiming> {
         "before" => TriggerTiming::Before,
         "after" => TriggerTiming::After,
         "instead_of" => TriggerTiming::InsteadOf,
-        other => return Err(MoldeError::new(line, format!("timing inválido: '{other}'"))),
+        other => return Err(MoldeError::new(line, format!("invalid timing: '{other}'"))),
     })
 }
 
@@ -624,7 +627,7 @@ fn parse_event(s: &str, line: usize) -> Result<TriggerEvent> {
         "update" => TriggerEvent::Update,
         "delete" => TriggerEvent::Delete,
         "truncate" => TriggerEvent::Truncate,
-        other => return Err(MoldeError::new(line, format!("evento inválido: '{other}'"))),
+        other => return Err(MoldeError::new(line, format!("invalid event: '{other}'"))),
     })
 }
 

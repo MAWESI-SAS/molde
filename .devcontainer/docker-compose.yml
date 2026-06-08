@@ -1,7 +1,7 @@
-# Dos servicios:
-#   app → contenedor de desarrollo (Rust), donde vive VS Code / Claude.
-#   db  → PostgreSQL local y desechable para probar scaffolding y migraciones.
-# SQLite no necesita servicio (es basado en archivo).
+# Two services:
+#   app → development container (Rust), where VS Code / Claude lives.
+#   db  → local, disposable PostgreSQL for testing scaffolding and migrations.
+# SQLite needs no service (it is file-based).
 services:
   app:
     build:
@@ -9,13 +9,13 @@ services:
       dockerfile: Dockerfile
     container_name: molde-dev
     volumes:
-      # Monta la raíz del repo en la ruta estándar de devcontainers.
+      # Mount the repo root at the standard devcontainers path.
       - ..:/workspaces/EF_RUST:cached
-      # Cache persistente de cargo entre rebuilds.
+      # Persistent cargo cache across rebuilds.
       - molde-cargo-cache:/usr/local/cargo/registry
     command: sleep infinity
     environment:
-      # Cadena de conexión que consume el CLI de molde (formato sqlx).
+      # Connection string consumed by the molde CLI (sqlx format).
       DATABASE_URL: postgres://molde:molde@db:5432/molde_dev
     depends_on:
       db:

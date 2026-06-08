@@ -1,6 +1,6 @@
-//! Formateo canónico de un archivo `.model`: parsea y re-emite en la forma
-//! canónica plana. Es la misma operación que usa el CLI (`molde fmt`) y el
-//! language server. Idempotente: `format_model(format_model(x)) == format_model(x)`.
+//! Canonical formatting of a `.model` file: parses and re-emits in the flat
+//! canonical form. It is the same operation used by the CLI (`molde fmt`) and the
+//! language server. Idempotent: `format_model(format_model(x)) == format_model(x)`.
 
 use molde_core::model::DatabaseModel;
 
@@ -8,14 +8,14 @@ use crate::emit::{emit_database, emit_entity};
 use crate::error::Result;
 use crate::parse::{parse_database, parse_entity};
 
-/// El nombre del archivo global de un proyecto de modelos.
+/// The name of the global file of a models project.
 pub const DATABASE_FILE: &str = "database.model";
 
-/// Formatea el contenido de un archivo `.model` a su forma canónica.
+/// Formats the contents of a `.model` file to its canonical form.
 ///
-/// El despacho depende del nombre: `database.model` se trata como el archivo de
-/// globales (esquema/extensiones/funciones/raw); cualquier otro, como una entidad.
-/// Devuelve `MoldeError` (con línea/columna) si el contenido no parsea.
+/// Dispatch depends on the name: `database.model` is treated as the globals file
+/// (schema/extensions/functions/raw); any other, as an entity.
+/// Returns `MoldeError` (with line/column) if the contents do not parse.
 pub fn format_model(name: &str, src: &str) -> Result<String> {
     if name == DATABASE_FILE {
         let g = parse_database(src)?;
@@ -37,13 +37,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn formatea_entidad_a_canonico() {
-        // Entrada desordenada (espacios extra, columnas sin alinear).
+    fn formats_entity_to_canonical() {
+        // Messy input (extra spaces, unaligned columns).
         let messy = "Customer\n  fields:\n    Id:    int   pk identity\n    Email:  string?   unique maxlen=200\n";
         let out = format_model("Customer.model", messy).unwrap();
-        // Re-formatear es idempotente.
+        // Re-formatting is idempotent.
         assert_eq!(format_model("Customer.model", &out).unwrap(), out);
-        // El contenido semántico se conserva (mismas columnas y facetas).
+        // The semantic content is preserved (same columns and facets).
         assert!(out.contains("Id:"));
         assert!(out.contains("identity"));
         assert!(out.contains("Email:"));
@@ -51,7 +51,7 @@ mod tests {
     }
 
     #[test]
-    fn formatea_database_model() {
+    fn formats_database_model() {
         let src = "schema: public\nextensions: [pg_trgm, unaccent]\n";
         let out = format_model(DATABASE_FILE, src).unwrap();
         assert_eq!(format_model(DATABASE_FILE, &out).unwrap(), out);
@@ -60,7 +60,7 @@ mod tests {
     }
 
     #[test]
-    fn error_de_parseo_se_propaga_con_linea() {
+    fn parse_error_propagates_with_line() {
         let bad = "Customer\n  fields:\n    Email: string nope\n";
         let err = format_model("Customer.model", bad).unwrap_err();
         assert_eq!(err.line, 3);

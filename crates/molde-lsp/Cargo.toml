@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-description = "Language server para el lenguaje de modelos molde (.model)"
+description = "Language server for the molde model language (.model)"
 
 [[bin]]
 name = "molde-lsp"

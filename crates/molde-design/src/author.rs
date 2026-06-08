@@ -1,6 +1,6 @@
-//! Autoría de migraciones: compara el modelo actual contra el snapshot, calcula
-//! el diff y escribe la migración + el snapshot actualizado. Es el equivalente de
-//! `dotnet ef migrations add`.
+//! Migration authoring: compares the current model against the snapshot, computes
+//! the diff, and writes the migration + the updated snapshot. It is the equivalent
+//! of `dotnet ef migrations add`.
 
 use std::path::{Path, PathBuf};
 
@@ -11,22 +11,22 @@ use molde_core::DatabaseModel;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthorError {
-    #[error("error con el snapshot: {0}")]
+    #[error("snapshot error: {0}")]
     Snapshot(#[from] SnapshotError),
-    #[error("error escribiendo la migración: {0}")]
+    #[error("error writing the migration: {0}")]
     Migration(#[from] migration::MigrationError),
-    #[error("error de E/S: {0}")]
+    #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("no hay migraciones que eliminar")]
+    #[error("there are no migrations to remove")]
     NothingToRemove,
 }
 
-/// Resultado de intentar crear una migración.
+/// Result of attempting to create a migration.
 #[derive(Debug)]
 pub enum AddOutcome {
-    /// El modelo no difiere del snapshot: no se creó nada.
+    /// The model does not differ from the snapshot: nothing was created.
     NoChanges,
-    /// Migración creada.
+    /// Migration created.
     Created {
         id: String,
         up_ops: usize,
@@ -36,9 +36,9 @@ pub enum AddOutcome {
     },
 }
 
-/// Crea una migración llamada `name` (con identificador `id` ya formado, p. ej.
-/// `20260607120000_InitialCreate`) a partir del diff entre el snapshot previo y
-/// `current`. Actualiza el snapshot si hay cambios.
+/// Creates a migration named `name` (with an already-formed identifier `id`, e.g.
+/// `20260607120000_InitialCreate`) from the diff between the previous snapshot and
+/// `current`. Updates the snapshot if there are changes.
 pub fn add(
     name: &str,
     id: &str,
@@ -56,7 +56,7 @@ pub fn add(
     if up.is_empty() {
         return Ok(AddOutcome::NoChanges);
     }
-    // El `down` es el diff inverso: revierte el modelo actual al previo.
+    // The `down` is the inverse diff: it reverts the current model to the previous one.
     let down = diff(current, &previous);
 
     let migration = Migration::new(id, name, up.clone(), down.clone());
@@ -72,8 +72,8 @@ pub fn add(
     })
 }
 
-/// Elimina la última migración y regenera el snapshot reproduciendo las
-/// migraciones restantes. Si no queda ninguna, borra el snapshot.
+/// Removes the last migration and regenerates the snapshot by replaying the
+/// remaining migrations. If none are left, it deletes the snapshot.
 pub fn remove(migrations_dir: &Path, snapshot_path: &Path) -> Result<String, AuthorError> {
     let mut migrations = migration::load_dir(migrations_dir)?;
     let last = migrations.pop().ok_or(AuthorError::NothingToRemove)?;
@@ -138,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn primera_migracion_crea_tabla_y_snapshot() {
+    fn first_migration_creates_table_and_snapshot() {
         let dir = std::env::temp_dir().join(format!("molde_author_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let snap = dir.join("model-snapshot.json");
@@ -161,13 +161,13 @@ mod tests {
             ..
         } = outcome
         else {
-            panic!("se esperaba Created");
+            panic!("expected Created");
         };
-        assert_eq!(up_ops, 1); // un CreateTable
+        assert_eq!(up_ops, 1); // one CreateTable
         assert!(migration_path.exists());
         assert!(snap.exists());
 
-        // La migración renderiza a un CREATE TABLE válido.
+        // The migration renders to a valid CREATE TABLE.
         let migration = molde_core::migration::load_dir(&dir).unwrap().remove(0);
         let sql = molde_providers::SqliteGenerator::new()
             .emit_all(&migration.up)
@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn sin_cambios_no_crea_migracion() {
+    fn no_changes_does_not_create_migration() {
         let dir = std::env::temp_dir().join(format!("molde_author_nc_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let snap = dir.join("model-snapshot.json");
@@ -193,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_regenera_snapshot_desde_las_restantes() {
+    fn remove_regenerates_snapshot_from_the_remaining() {
         let dir = std::env::temp_dir().join(format!("molde_author_rm_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let snap = dir.join("model-snapshot.json");
@@ -206,23 +206,23 @@ mod tests {
         ]);
         add("AddEmail", "20260607120100_AddEmail", &v2, &dir, &snap).unwrap();
 
-        // Quitar la última debe dejar el snapshot como v1 (solo columna Id).
+        // Removing the last one should leave the snapshot as v1 (only the Id column).
         let removed = remove(&dir, &snap).unwrap();
         assert_eq!(removed, "20260607120100_AddEmail");
         assert_eq!(molde_core::migration::load_dir(&dir).unwrap().len(), 1);
         let snapshot = molde_core::snapshot::load(&snap).unwrap();
         assert_eq!(snapshot.table(None, "Customer").unwrap().columns.len(), 1);
 
-        // Quitar la última restante borra el snapshot.
+        // Removing the last remaining one deletes the snapshot.
         remove(&dir, &snap).unwrap();
         assert!(!snap.exists());
-        assert!(remove(&dir, &snap).is_err()); // ya no hay nada
+        assert!(remove(&dir, &snap).is_err()); // nothing left
 
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn segunda_migracion_detecta_columna_nueva() {
+    fn second_migration_detects_new_column() {
         let dir = std::env::temp_dir().join(format!("molde_author_col_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let snap = dir.join("model-snapshot.json");
@@ -236,9 +236,9 @@ mod tests {
         ]);
         let outcome = add("AddEmail", "20260607120100_AddEmail", &v2, &dir, &snap).unwrap();
         let AddOutcome::Created { up_ops, .. } = outcome else {
-            panic!("se esperaba Created");
+            panic!("expected Created");
         };
-        assert_eq!(up_ops, 1); // un AddColumn
+        assert_eq!(up_ops, 1); // one AddColumn
         let migration = molde_core::migration::load_dir(&dir)
             .unwrap()
             .pop()

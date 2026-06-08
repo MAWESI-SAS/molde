@@ -1,16 +1,16 @@
 # molde
 
-Herramienta de **esquema de base de datos en Rust** construida sobre **molde**, un
-lenguaje de modelos propio, declarativo y legible (estilo TOON/YAML). molde hace
-**scaffold** (BD → modelos), genera **migraciones** (modelo → diff) y las
-**aplica** sobre 4 motores. Sin .NET, sin C#: todo en Rust.
+A **Rust database schema** tool built on top of **molde**, a custom, declarative,
+human-readable model language (TOON/YAML style). molde does **scaffolding**
+(DB → models), generates **migrations** (model → diff), and **applies** them
+across 4 engines. No .NET, no C#: everything in Rust.
 
-> molde gestiona el **esquema** (modelos, migraciones, aplicación). El acceso a
-> datos en runtime (consultas de tu aplicación) queda fuera de su alcance.
+> molde manages the **schema** (models, migrations, application). Runtime data
+> access (your application's queries) is out of scope.
 
-## El lenguaje molde (`.model`)
+## The molde language (`.model`)
 
-Una entidad por archivo; toda la configuración de la tabla vive junta. Ejemplo:
+One entity per file; all the table configuration lives together. Example:
 
 ```
 Customer
@@ -30,108 +30,111 @@ Order
     Customer: {fk: CustomerId, references: Customer.Id, onDelete: cascade}
 ```
 
-Especificación completa: [`docs/molde-language-spec.md`](docs/molde-language-spec.md).
+Full specification: [`docs/molde-language-spec.md`](docs/molde-language-spec.md).
 
-## Flujo
+## Flow
 
 ```
-BD ──scaffold──▶ models/*.model
-models/*.model ──migrations add──▶ migrations/*.json (diff contra snapshot)
-migrations/*.json ──database update──▶ BD
+DB ──pull──▶ models/*.model
+models/*.model ──migrate──▶ migrations/*.json (diff against snapshot)
+migrations/*.json ──apply──▶ DB
 ```
 
-Todo pivota sobre un **IR** común (`molde_core::DatabaseModel`): el lenguaje es su
-forma textual, los readers lo producen desde la BD y el diff genera el SQL.
+Everything pivots on a shared **IR** (`molde_core::DatabaseModel`): the language is
+its textual form, the readers produce it from the DB, and the diff generates the SQL.
 
-## Arquitectura
+## Architecture
 
 ```
 molde (CLI, Rust)
-├── molde-core         IR del modelo + snapshot + diff + migraciones (agnóstico)
-├── molde-lang         lenguaje molde: parser/emitter (.model ↔ IR)
-├── molde-providers    SqlGenerator por motor (SQLite, Postgres, MySQL, SQL Server)
-├── molde-migrate      apply de migraciones (Backend: sqlx Any + tiberius/TDS)
-├── molde-scaffold     lectura de esquema (BD → IR) + emisión de .model
-└── molde-design       autoría de migraciones (diff contra snapshot)
+├── molde-core         model IR + snapshot + diff + migrations (engine-agnostic)
+├── molde-lang         molde language: parser/emitter (.model ↔ IR)
+├── molde-providers    SqlGenerator per engine (SQLite, Postgres, MySQL, SQL Server)
+├── molde-migrate      migration apply (Backend: sqlx Any + tiberius/TDS)
+├── molde-scaffold     schema reading (DB → IR) + .model emission
+└── molde-design       migration authoring (diff against snapshot)
 ```
 
-### Matriz de capacidades por motor
+### Capability matrix per engine
 
-| Capacidad | PostgreSQL | MySQL | SQLite | SQL Server |
+| Capability | PostgreSQL | MySQL | SQLite | SQL Server |
 |---|:--:|:--:|:--:|:--:|
-| `database update` (apply) | ✅ | ✅ | ✅ | ✅ (tiberius) |
-| `migrations add/remove/list` | ✅ | ✅ | ✅ | ✅ |
-| `scaffold` (BD → `.model`) | ✅ | ✅ | ✅ | ✅ (tiberius) |
-| Búsqueda / full-text (scaffold + round-trip) | ✅ pgvector+tsvector+triggers | ✅ FULLTEXT+generated | — | ✅ computed PERSISTED · FTS best-effort |
+| `apply` (apply migrations) | ✅ | ✅ | ✅ | ✅ (tiberius) |
+| `migrate` / `undo` / `status` | ✅ | ✅ | ✅ | ✅ |
+| `pull` (DB → `.model`) | ✅ | ✅ | ✅ | ✅ (tiberius) |
+| Search / full-text (pull + round-trip) | ✅ pgvector+tsvector+triggers | ✅ FULLTEXT+generated | — | ✅ computed PERSISTED · FTS best-effort |
 
-> SQLite: las FKs se declaran inline en `CREATE TABLE`; el cambio de tipo de
-> columna y el alta/baja de FK sobre tablas existentes se aplican con
-> reconstrucción de tabla (create-new/copy/drop/rename), estilo EF.
-> SQL Server usa el driver TDS `tiberius`; el resto usa `sqlx` (`Any`).
-> **PostgreSQL:** el scaffold preserva `vector(N)` (pgvector), `tsvector` (incl.
-> columnas generadas `STORED`), índices con método/operator class (GIN, GiST,
-> HNSW, IVFFlat) e índices parciales. Funciones, triggers e índices por expresión
-> se preservan en `.model` (bloques `triggers:`/`functions:`/`indexes:` y `raw:`).
-> Los tipos no convencionales (`jsonb`, arrays, `citext`, `vector`, `tsvector`…)
-> se conservan con `dbtype=`.
+> SQLite: FKs are declared inline in `CREATE TABLE`; column type changes and
+> adding/dropping FKs on existing tables are applied via table rebuild
+> (create-new/copy/drop/rename), EF-style.
+> SQL Server uses the TDS driver `tiberius`; everything else uses `sqlx` (`Any`).
+> **PostgreSQL:** scaffolding preserves `vector(N)` (pgvector), `tsvector` (incl.
+> generated `STORED` columns), indexes with method/operator class (GIN, GiST,
+> HNSW, IVFFlat), and partial indexes. Functions, triggers, and expression indexes
+> are preserved in `.model` (`triggers:`/`functions:`/`indexes:` blocks and `raw:`).
+> Unconventional types (`jsonb`, arrays, `citext`, `vector`, `tsvector`…) are
+> retained with `dbtype=`.
 
-### Backend TLS
+### TLS backend
 
-Por defecto **rustls**. Para servidores con certificados X.509 v1 (legacy) que
-rustls rechaza, compilar con **native-tls (OpenSSL)**:
+Defaults to **rustls**. For servers with X.509 v1 (legacy) certificates that
+rustls rejects, compile with **native-tls (OpenSSL)**:
 
 ```bash
 cargo build -p molde-cli --no-default-features --features tls-native-tls
 ```
 
-## Comandos
+## Commands
 
 ```bash
-# 1. Database-first: generar los .model desde una BD existente.
-molde scaffold --connection "$DATABASE_URL" --output-dir models
+# 1. Database-first: introspect an existing DB into .model files.
+molde pull --connection "$DATABASE_URL" --out models
 
-# 2. Model-first: crear una migración a partir de los .model (diff vs snapshot).
-molde migrations add InitialCreate           # lee models/, escribe migrations/
-molde migrations list
-molde migrations remove
+# 2. Model-first: create a migration from the .model files (diff vs snapshot).
+molde migrate InitialCreate                  # reads models/, writes migrations/
+molde status                                 # list migrations
+molde undo                                   # remove the latest migration
 
-# 3. Aplicar / revertir migraciones contra la BD.
-molde database update --connection "$DATABASE_URL"
-molde database update --connection "$DATABASE_URL" --target 0            # revertir todo
-molde database update --connection "$DATABASE_URL" --target InitialCreate
+# 3. Apply / roll back migrations against the DB.
+molde apply --connection "$DATABASE_URL"
+molde apply --connection "$DATABASE_URL" --to 0               # roll back everything
+molde apply --connection "$DATABASE_URL" --to InitialCreate
 ```
 
-El provider se infiere de la URL (`postgres://`, `mysql://`, `sqlite://`) o se
-indica con `--provider`. SQL Server usa cadena ADO:
+Run a command with no arguments and it prompts for what's missing (migration name,
+connection); `apply` confirms before touching the database. Use `--yes` to skip the
+confirmation and `--no-input` for CI (no prompts). The provider is inferred from the
+URL (`postgres://`, `mysql://`, `sqlite://`) or set with `--provider`. SQL Server uses
+an ADO connection string:
 
 ```bash
-molde database update --provider sqlserver \
+molde apply --provider sqlserver \
   --connection "Server=host,1433;Database=db;User Id=sa;Password=***;TrustServerCertificate=true;Encrypt=true"
 ```
 
-### Disposición del proyecto
+### Project layout
 
 ```
-models/                 # fuente de verdad (una entidad por .model)
-  database.model        # globales: schema, extensiones, funciones, raw
+models/                 # source of truth (one entity per .model)
+  database.model        # globals: schema, extensions, functions, raw
   Customer.model
   Order.model
-migrations/             # versionado en git
-  snapshot.json         # estado previo (gestionado por molde)
-  20260607_*.json       # migraciones (operaciones del IR; el SQL se renderiza al aplicar)
+migrations/             # versioned in git
+  snapshot.json         # previous state (managed by molde)
+  20260607_*.json       # migrations (IR operations; SQL is rendered on apply)
 ```
 
-## Desarrollo
+## Development
 
-Workspace de Rust estándar (`cargo build` / `cargo test`). El
-[`.devcontainer/`](.devcontainer/) trae Rust + PostgreSQL local; abre el repo en
-VS Code y elige *"Reopen in Container"*.
+Standard Rust workspace (`cargo build` / `cargo test`). The
+[`.devcontainer/`](.devcontainer/) ships Rust + a local PostgreSQL; open the repo
+in VS Code and choose *"Reopen in Container"*.
 
 ```bash
 cargo build && cargo test
 cargo clippy --workspace --all-targets
 ```
 
-## Licencia
+## License
 
 MIT

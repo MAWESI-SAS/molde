@@ -1,16 +1,16 @@
-//! Diff entre dos [`DatabaseModel`] → lista de [`Operation`], y la evolución
-//! inversa [`apply_operation`] (aplicar una operación a un modelo).
+//! Diff between two [`DatabaseModel`] → list of [`Operation`], and the inverse
+//! evolution [`apply_operation`] (apply an operation to a model).
 //!
-//! El orden de las operaciones respeta dependencias: al crear, primero las
-//! tablas, luego sus FKs e índices; al eliminar, primero FKs e índices y al
-//! final las tablas. Esto evita violar restricciones referenciales.
+//! The order of operations respects dependencies: when creating, first the
+//! tables, then their FKs and indexes; when dropping, first FKs and indexes and
+//! the tables last. This avoids violating referential constraints.
 
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Column, DatabaseModel, DbFunction, ForeignKey, Index, Table, Trigger};
 
-/// Una operación atómica de migración. Provider-agnóstica; cada provider la
-/// traduce a SQL.
+/// An atomic migration operation. Provider-agnostic; each provider translates
+/// it to SQL.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Operation {
@@ -34,9 +34,9 @@ pub enum Operation {
     AlterColumn {
         schema: Option<String>,
         table: String,
-        /// Estado deseado de la columna.
+        /// Desired state of the column.
         new: Column,
-        /// Estado previo (para generar el `Down`).
+        /// Previous state (to generate the `Down`).
         old: Column,
     },
     AddForeignKey {
@@ -59,13 +59,13 @@ pub enum Operation {
         table: String,
         name: String,
     },
-    /// Asegura que una extensión del motor esté instalada (p. ej. `vector` de
-    /// pgvector en Postgres). Se antepone cuando el modelo usa tipos/índices que
-    /// la requieren. Motores sin extensiones la omiten.
+    /// Ensures an engine extension is installed (e.g. pgvector's `vector` in
+    /// Postgres). It is prepended when the model uses types/indexes that
+    /// require it. Engines without extensions skip it.
     EnsureExtension {
         name: String,
     },
-    /// Crea una función de esquema (p. ej. función de trigger en Postgres).
+    /// Creates a schema function (e.g. a trigger function in Postgres).
     CreateFunction {
         function: DbFunction,
     },
@@ -73,7 +73,7 @@ pub enum Operation {
         schema: Option<String>,
         name: String,
     },
-    /// Crea un trigger sobre una tabla.
+    /// Creates a trigger on a table.
     CreateTrigger {
         schema: Option<String>,
         table: String,
@@ -84,34 +84,34 @@ pub enum Operation {
         table: String,
         name: String,
     },
-    /// DDL crudo a ejecutar verbatim (escape hatch; ver [`DatabaseModel::raw_objects`]).
+    /// Raw DDL to run verbatim (escape hatch; see [`DatabaseModel::raw_objects`]).
     RawSql {
         sql: String,
     },
-    /// Reconstrucción completa de una tabla existente. La emite `diff()` (además
-    /// de los ALTER granulares) cuando una tabla cambia de forma que SQLite no
-    /// puede aplicar con `ALTER` (cambio de tipo de columna, alta/baja de FK).
-    /// SQLite la materializa (create-new/copy/drop/rename); el resto de motores
-    /// la ignoran y usan los ALTER granulares.
+    /// Full rebuild of an existing table. Emitted by `diff()` (in addition to
+    /// the granular ALTERs) when a table changes in a way that SQLite cannot
+    /// apply with `ALTER` (column type change, FK add/drop).
+    /// SQLite materializes it (create-new/copy/drop/rename); the rest of the engines
+    /// ignore it and use the granular ALTERs.
     RebuildTable {
-        /// Esquema final deseado de la tabla.
+        /// Desired final schema of the table.
         table: Table,
-        /// Columnas a copiar de la tabla vieja (las presentes en ambas).
+        /// Columns to copy from the old table (those present in both).
         copy_columns: Vec<String>,
     },
-    /// Inserta una fila de datos sembrados (`HasData`).
+    /// Inserts a seed data row (`HasData`).
     InsertData {
         schema: Option<String>,
         table: String,
         row: std::collections::BTreeMap<String, serde_json::Value>,
     },
-    /// Borra una fila sembrada por su clave primaria.
+    /// Deletes a seed row by its primary key.
     DeleteData {
         schema: Option<String>,
         table: String,
         key: std::collections::BTreeMap<String, serde_json::Value>,
     },
-    /// Actualiza los valores no-clave de una fila sembrada.
+    /// Updates the non-key values of a seed row.
     UpdateData {
         schema: Option<String>,
         table: String,
@@ -120,16 +120,16 @@ pub enum Operation {
     },
 }
 
-/// Calcula las operaciones necesarias para transformar `from` en `to`.
+/// Computes the operations needed to transform `from` into `to`.
 ///
-/// Orden (seguro frente a dependencias):
-/// 1. `DropForeignKey`, `DropIndex` de tablas que cambian o desaparecen.
-/// 2. `CreateTable` de tablas nuevas.
-/// 3. Alteraciones de columnas en tablas existentes.
-/// 4. `AddForeignKey`, `CreateIndex` (las tablas referenciadas ya existen).
-/// 5. `DropTable` de tablas obsoletas.
+/// Order (safe with respect to dependencies):
+/// 1. `DropForeignKey`, `DropIndex` of tables that change or disappear.
+/// 2. `CreateTable` of new tables.
+/// 3. Column alterations on existing tables.
+/// 4. `AddForeignKey`, `CreateIndex` (the referenced tables already exist).
+/// 5. `DropTable` of obsolete tables.
 ///
-/// > Nota: aún no se detectan renombrados (se ven como drop+add).
+/// > Note: renames are not detected yet (they look like drop+add).
 pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     let mut ensure_extensions = Vec::new();
     let mut drop_triggers = Vec::new();
@@ -147,17 +147,17 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     let mut raw_sql = Vec::new();
     let mut drop_tables = Vec::new();
 
-    // Objetos DDL crudos nuevos (full-text de SQL Server, etc.). Verbatim, al
-    // final (dependen de tablas/índices ya creados).
+    // New raw DDL objects (SQL Server full-text, etc.). Verbatim, at the
+    // end (they depend on already-created tables/indexes).
     for obj in &to.raw_objects {
         if !from.raw_objects.contains(obj) {
             raw_sql.push(Operation::RawSql { sql: obj.clone() });
         }
     }
 
-    // Extensiones a asegurar: las declaradas explícitamente en el modelo
-    // (leídas de la BD) más `vector` si se infiere por uso de tipos/índices
-    // (flujo model-first, que no lista extensiones). Se anteponen a todo el DDL.
+    // Extensions to ensure: those declared explicitly in the model
+    // (read from the DB) plus `vector` if inferred from type/index usage
+    // (model-first flow, which does not list extensions). They are prepended to all the DDL.
     let needed = wanted_extensions(to);
     let already = wanted_extensions(from);
     for ext in &needed {
@@ -166,8 +166,8 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
         }
     }
 
-    // Funciones de esquema: crear nuevas o redefinidas (CREATE OR REPLACE),
-    // eliminar las que ya no están. Se crean antes que los triggers que las usan.
+    // Schema functions: create new or redefined ones (CREATE OR REPLACE),
+    // drop those no longer present. Created before the triggers that use them.
     for f in &to.functions {
         match from
             .functions
@@ -193,7 +193,7 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
         }
     }
 
-    // Tablas nuevas (y sus FKs/índices/triggers).
+    // New tables (and their FKs/indexes/triggers).
     for t in &to.tables {
         if from.table(t.schema.as_deref(), &t.name).is_none() {
             create_tables.push(Operation::CreateTable { table: t.clone() });
@@ -228,7 +228,7 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
         }
     }
 
-    // Tablas presentes en ambos → diff de columnas, FKs, índices y triggers.
+    // Tables present in both → diff of columns, FKs, indexes and triggers.
     for new_t in &to.tables {
         let Some(old_t) = from.table(new_t.schema.as_deref(), &new_t.name) else {
             continue;
@@ -238,8 +238,8 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
         diff_indexes(old_t, new_t, &mut create_indexes, &mut drop_indexes);
         diff_triggers(old_t, new_t, &mut create_triggers, &mut drop_triggers);
 
-        // Cambios que SQLite no puede hacer con ALTER (tipo de columna o FK):
-        // se emite además una reconstrucción completa que SQLite materializa.
+        // Changes that SQLite cannot do with ALTER (column type or FK):
+        // a full rebuild is also emitted, which SQLite materializes.
         let column_type_changed = new_t
             .columns
             .iter()
@@ -268,9 +268,9 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
         diff_seed_data(old_t, new_t, &mut data_ops);
     }
 
-    // Tablas eliminadas (triggers/FKs/índices primero, luego la tabla).
-    // Nota: en la BD los triggers caen con la tabla; aquí solo emitimos los
-    // drops para tablas que cambian, no para las que desaparecen.
+    // Removed tables (triggers/FKs/indexes first, then the table).
+    // Note: in the DB triggers drop with the table; here we only emit the
+    // drops for tables that change, not for those that disappear.
     for t in &from.tables {
         if to.table(t.schema.as_deref(), &t.name).is_none() {
             for ix in &t.indexes {
@@ -303,8 +303,8 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     ops.extend(create_tables);
     ops.extend(column_ops);
     ops.extend(add_fks);
-    // Funciones tras las tablas (pueden referenciarlas) y antes de índices y
-    // triggers (que pueden usarlas, p. ej. índices por expresión funcional).
+    // Functions after the tables (they may reference them) and before indexes and
+    // triggers (which may use them, e.g. functional expression indexes).
     ops.extend(create_functions);
     ops.extend(create_indexes);
     ops.extend(create_triggers);
@@ -315,8 +315,8 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     ops
 }
 
-/// Clave de una fila sembrada: el subconjunto de columnas de la PK (o la fila
-/// completa si no hay PK).
+/// Key of a seed row: the subset of PK columns (or the whole row if there is no
+/// PK).
 fn seed_key(
     row: &std::collections::BTreeMap<String, serde_json::Value>,
     pk_cols: &[String],
@@ -330,8 +330,8 @@ fn seed_key(
         .collect()
 }
 
-/// Diff de datos sembrados (`HasData`): genera Insert/Update/Delete por fila,
-/// emparejando por clave primaria.
+/// Diff of seed data (`HasData`): generates Insert/Update/Delete per row,
+/// matching by primary key.
 fn diff_seed_data(old_t: &Table, new_t: &Table, ops: &mut Vec<Operation>) {
     let pk_cols = new_t
         .primary_key
@@ -379,8 +379,8 @@ fn diff_seed_data(old_t: &Table, new_t: &Table, ops: &mut Vec<Operation>) {
     }
 }
 
-/// ¿El modelo usa la extensión `vector` (pgvector)? Cierto si alguna columna es
-/// de tipo `vector(...)` / `Pgvector.Vector`, o algún índice usa `hnsw`/`ivfflat`.
+/// Does the model use the `vector` extension (pgvector)? True if any column is
+/// of type `vector(...)` / `Pgvector.Vector`, or some index uses `hnsw`/`ivfflat`.
 fn requires_vector_extension(model: &DatabaseModel) -> bool {
     model.tables.iter().any(|t| {
         t.columns.iter().any(|c| {
@@ -396,8 +396,8 @@ fn requires_vector_extension(model: &DatabaseModel) -> bool {
     })
 }
 
-/// Conjunto de extensiones que el modelo necesita: las declaradas explícitamente
-/// (leídas de la BD) más `vector` si se infiere por uso de tipos/índices.
+/// Set of extensions the model needs: those declared explicitly
+/// (read from the DB) plus `vector` if inferred from type/index usage.
 fn wanted_extensions(model: &DatabaseModel) -> std::collections::BTreeSet<String> {
     let mut set: std::collections::BTreeSet<String> = model.extensions.iter().cloned().collect();
     if requires_vector_extension(model) {
@@ -492,8 +492,8 @@ fn diff_triggers(
     create: &mut Vec<Operation>,
     drop: &mut Vec<Operation>,
 ) {
-    // Postgres no garantiza CREATE OR REPLACE TRIGGER en todas las versiones, así
-    // que un cambio de definición se trata como drop + create.
+    // Postgres does not guarantee CREATE OR REPLACE TRIGGER in all versions, so
+    // a definition change is treated as drop + create.
     for tg in &new_t.triggers {
         match old_t.triggers.iter().find(|t| t.name == tg.name) {
             Some(old) if old.definition == tg.definition => {}
@@ -527,8 +527,8 @@ fn diff_triggers(
     }
 }
 
-/// Aplica una operación a un modelo en memoria. Permite reconstruir el snapshot
-/// reproduciendo las operaciones `up` de una secuencia de migraciones.
+/// Applies an operation to an in-memory model. Allows rebuilding the snapshot
+/// by replaying the `up` operations of a sequence of migrations.
 pub fn apply_operation(model: &mut DatabaseModel, op: &Operation) {
     match op {
         Operation::CreateTable { table } => model.tables.push(table.clone()),
@@ -746,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn detecta_tabla_nueva() {
+    fn detects_new_table() {
         let from = DatabaseModel::empty();
         let mut to = DatabaseModel::empty();
         to.tables.push(table("Customer", &["Id", "Name"]));
@@ -756,7 +756,7 @@ mod tests {
     }
 
     #[test]
-    fn tabla_nueva_con_fk_e_indice_ordena_create_antes_de_fk() {
+    fn new_table_with_fk_and_index_orders_create_before_fk() {
         let from = DatabaseModel::empty();
         let mut to = DatabaseModel::empty();
         let mut order = table("Order", &["Id", "CustomerId"]);
@@ -780,14 +780,14 @@ mod tests {
         to.tables.push(order);
 
         let ops = diff(&from, &to);
-        // create_table, add_foreign_key, create_index — en ese orden.
+        // create_table, add_foreign_key, create_index — in that order.
         assert!(matches!(ops[0], Operation::CreateTable { .. }));
         assert!(matches!(ops[1], Operation::AddForeignKey { .. }));
         assert!(matches!(ops[2], Operation::CreateIndex { .. }));
     }
 
     #[test]
-    fn detecta_columna_añadida_y_eliminada() {
+    fn detects_added_and_removed_column() {
         let mut from = DatabaseModel::empty();
         from.tables.push(table("Customer", &["Id", "Name"]));
         let mut to = DatabaseModel::empty();
@@ -808,7 +808,7 @@ mod tests {
     }
 
     #[test]
-    fn modelo_identico_sin_cambios() {
+    fn identical_model_no_changes() {
         let mut m = DatabaseModel::empty();
         m.tables.push(table("Customer", &["Id"]));
         assert!(diff(&m, &m).is_empty());
@@ -836,7 +836,7 @@ mod tests {
     }
 
     #[test]
-    fn funcion_antes_que_trigger_al_crear() {
+    fn function_before_trigger_when_creating() {
         let from = DatabaseModel::empty();
         let mut to = DatabaseModel::empty();
         to.functions.push(func(
@@ -857,11 +857,14 @@ mod tests {
             .iter()
             .position(|o| matches!(o, Operation::CreateTrigger { .. }))
             .unwrap();
-        assert!(fpos < tpos, "la función debe crearse antes que el trigger");
+        assert!(
+            fpos < tpos,
+            "the function must be created before the trigger"
+        );
     }
 
     #[test]
-    fn trigger_redefinido_es_drop_mas_create() {
+    fn redefined_trigger_is_drop_plus_create() {
         let mut from = DatabaseModel::empty();
         let mut t0 = table("documents", &["Id"]);
         t0.triggers.push(trig("trg_norm", "DEF v1"));
@@ -885,7 +888,7 @@ mod tests {
                 .count(),
             1
         );
-        // El drop va antes que el create.
+        // The drop goes before the create.
         let dpos = ops
             .iter()
             .position(|o| matches!(o, Operation::DropTrigger { .. }))
@@ -905,7 +908,7 @@ mod tests {
     }
 
     #[test]
-    fn ensure_extension_vector_se_antepone_y_es_idempotente() {
+    fn ensure_extension_vector_is_prepended_and_is_idempotent() {
         let from = DatabaseModel::empty();
         let mut to = DatabaseModel::empty();
         let mut t = table("docs", &["id"]);
@@ -915,19 +918,19 @@ mod tests {
         let ops = diff(&from, &to);
         assert!(
             matches!(ops.first(), Some(Operation::EnsureExtension { name }) if name == "vector"),
-            "EnsureExtension(vector) debe ir primero: {ops:?}"
+            "EnsureExtension(vector) must come first: {ops:?}"
         );
-        // Idempotencia: si ambos modelos ya usan vector, no se re-emite.
+        // Idempotency: if both models already use vector, it is not re-emitted.
         assert!(!diff(&to, &to)
             .iter()
             .any(|o| matches!(o, Operation::EnsureExtension { .. })));
     }
 
     #[test]
-    fn cambio_de_tipo_en_tabla_existente_emite_rebuild() {
+    fn type_change_on_existing_table_emits_rebuild() {
         let mut from = DatabaseModel::empty();
         let mut t0 = table("docs", &["id", "title"]);
-        // title pasa de integer (col() default) a string en `to`.
+        // title goes from integer (col() default) to string in `to`.
         from.tables.push(t0.clone());
 
         let mut to = DatabaseModel::empty();
@@ -945,17 +948,17 @@ mod tests {
             } => Some((table, copy_columns)),
             _ => None,
         });
-        let (rt, copy) = rebuild.expect("debe emitir RebuildTable");
+        let (rt, copy) = rebuild.expect("must emit RebuildTable");
         assert_eq!(rt.name, "docs");
         assert_eq!(copy, &vec!["id".to_string(), "title".to_string()]);
-        // Idempotencia: sin cambios no hay rebuild.
+        // Idempotency: no changes means no rebuild.
         assert!(!diff(&to, &to)
             .iter()
             .any(|o| matches!(o, Operation::RebuildTable { .. })));
     }
 
     #[test]
-    fn seed_data_genera_insert_update_delete() {
+    fn seed_data_generates_insert_update_delete() {
         use serde_json::json;
         let row = |id: i64, name: &str| {
             let mut m = std::collections::BTreeMap::new();
@@ -990,7 +993,7 @@ mod tests {
                 .count(),
             1
         );
-        // y a la inversa hay un delete.
+        // and in reverse there is a delete.
         let back = diff(&to, &from);
         assert_eq!(
             back.iter()
@@ -999,19 +1002,16 @@ mod tests {
             1
         );
 
-        // Idempotencia + reconstrucción.
+        // Idempotency + rebuild.
         let mut rebuilt = DatabaseModel::empty();
         for op in &diff(&DatabaseModel::empty(), &to) {
             apply_operation(&mut rebuilt, op);
         }
-        assert!(
-            diff(&rebuilt, &to).is_empty(),
-            "seed reconstruido equivalente"
-        );
+        assert!(diff(&rebuilt, &to).is_empty(), "rebuilt seed is equivalent");
     }
 
     #[test]
-    fn apply_reconstruye_funciones_y_triggers() {
+    fn apply_rebuilds_functions_and_triggers() {
         let mut target = DatabaseModel::empty();
         target.functions.push(func("f", "DEF"));
         let mut t = table("documents", &["Id"]);
@@ -1025,14 +1025,11 @@ mod tests {
         }
         assert_eq!(rebuilt.functions.len(), 1);
         assert_eq!(rebuilt.table(None, "documents").unwrap().triggers.len(), 1);
-        assert!(
-            diff(&rebuilt, &target).is_empty(),
-            "reconstrucción equivalente"
-        );
+        assert!(diff(&rebuilt, &target).is_empty(), "rebuild is equivalent");
     }
 
     #[test]
-    fn apply_operation_reconstruye_el_modelo() {
+    fn apply_operation_rebuilds_the_model() {
         let mut target = DatabaseModel::empty();
         let mut t = table("Customer", &["Id", "Name"]);
         t.primary_key = Some(PrimaryKey {
@@ -1041,16 +1038,13 @@ mod tests {
         });
         target.tables.push(t);
 
-        // Reproducir las ops `up` sobre un modelo vacío debe dar el mismo modelo.
+        // Replaying the `up` ops on an empty model must give the same model.
         let ops = diff(&DatabaseModel::empty(), &target);
         let mut rebuilt = DatabaseModel::empty();
         for op in &ops {
             apply_operation(&mut rebuilt, op);
         }
         assert_eq!(rebuilt.table(None, "Customer").unwrap().columns.len(), 2);
-        assert!(
-            diff(&rebuilt, &target).is_empty(),
-            "reconstrucción equivalente"
-        );
+        assert!(diff(&rebuilt, &target).is_empty(), "rebuild is equivalent");
     }
 }

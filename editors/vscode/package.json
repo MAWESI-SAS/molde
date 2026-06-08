@@ -1,7 +1,7 @@
 {
   "name": "molde-language",
-  "displayName": "molde — lenguaje de modelos",
-  "description": "Soporte de lenguaje para archivos .model (molde): resaltado, formateo, navegación y dependencias.",
+  "displayName": "molde — model language",
+  "description": "Language support for .model files (molde): highlighting, formatting, navigation, and dependencies.",
   "version": "0.0.2",
   "publisher": "molde",
   "license": "MIT",
@@ -47,12 +47,12 @@
         "molde.server.path": {
           "type": "string",
           "default": "molde-lsp",
-          "description": "Ruta al binario del language server molde-lsp (en PATH por defecto)."
+          "description": "Path to the molde-lsp language server binary (on PATH by default)."
         },
         "molde.server.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Activa el language server (diagnostics, navegación, dependencias, formateo)."
+          "description": "Enables the language server (diagnostics, navigation, dependencies, formatting)."
         }
       }
     }

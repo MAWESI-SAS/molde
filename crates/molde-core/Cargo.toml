@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-description = "Modelo intermedio (IR), snapshots y diff para molde"
+description = "Intermediate model (IR), snapshots and diff for molde"
 
 [dependencies]
 serde = { workspace = true }

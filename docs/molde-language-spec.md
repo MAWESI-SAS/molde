@@ -1,70 +1,69 @@
-# molde — Especificación del lenguaje de modelos de molde
+# molde — molde model language specification
 
-> **Estado:** borrador para aprobación (Fase A, entregable 1).
-> **Nombre provisional:** molde (*molde model language*). Extensión de archivo: `.model`.
-> **Objetivo:** reemplazar por completo a C# como formato de definición de modelos
-> dentro de molde. molde es **solo capa de esquema**: gestiona y versiona modelos,
-> genera migraciones y hace scaffold. El acceso a datos en runtime queda fuera de
-> alcance. No hay generación de C# ni sidecar .NET.
-
----
-
-## 1. Principios de diseño
-
-1. **Legible por humanos y barato en tokens para agentes.** Sintaxis indentada
-   estilo TOON/YAML, sin llaves ni puntuación superflua.
-2. **Una entidad por archivo.** `Customer.model`, `Order.model`, … más un
-   `database.model` para lo global. Todo lo de una tabla vive junto (columnas,
-   PK, FKs, índices, triggers, seed) — no hay un "DbContext" aparte.
-3. **El lenguaje es una proyección del IR.** Cada construcción mapea 1:1 a un
-   campo de `molde-core::model::DatabaseModel`. El IR sigue siendo el centro;
-   `.model` es su forma textual canónica.
-4. **Round-trip garantizado a nivel IR.** `parse(emit(ir)) == ir`. Las
-   construcciones de alto nivel (owned, herencia, enums) son **azúcar de
-   escritura** que se expande a la forma relacional plana; el scaffold desde BD
-   emite siempre la forma canónica (plana).
-5. **Agnóstico del motor, con escape hatches.** Tipos lógicos que cada provider
-   traduce; `dbtype=` y bloques `sql:` crudos para lo específico de un motor.
+> **Status:** draft for approval (Phase A, deliverable 1).
+> **Provisional name:** molde (*molde model language*). File extension: `.model`.
+> **Goal:** fully replace C# as the model definition format within molde. molde
+> is a **schema layer only**: it manages and versions models, generates
+> migrations, and does scaffolding. Runtime data access is out of scope. There is
+> no C# generation or .NET sidecar.
 
 ---
 
-## 2. Estructura del proyecto
+## 1. Design principles
+
+1. **Human-readable and token-cheap for agents.** Indented syntax,
+   TOON/YAML style, no braces or superfluous punctuation.
+2. **One entity per file.** `Customer.model`, `Order.model`, … plus a
+   `database.model` for global concerns. Everything about a table lives together
+   (columns, PK, FKs, indexes, triggers, seed) — there is no separate "DbContext".
+3. **The language is a projection of the IR.** Each construct maps 1:1 to a field
+   of `molde-core::model::DatabaseModel`. The IR remains the center; `.model` is
+   its canonical textual form.
+4. **Round-trip guaranteed at the IR level.** `parse(emit(ir)) == ir`. The
+   high-level constructs (owned, inheritance, enums) are **authoring sugar** that
+   expands to the flat relational form; scaffolding from the DB always emits the
+   canonical (flat) form.
+5. **Engine-agnostic, with escape hatches.** Logical types that each provider
+   translates; `dbtype=` and raw `sql:` blocks for engine-specific concerns.
+
+---
+
+## 2. Project structure
 
 ```
 models/
-  database.model        # metadatos globales (schema, extensiones, funciones, raw)
-  Customer.model        # una entidad = una tabla
+  database.model        # global metadata (schema, extensions, functions, raw)
+  Customer.model        # one entity = one table
   Order.model
   Payment.model
-migrations/             # hermano de models/, VISIBLE y versionado en git
-  snapshot.json         # estado previo (gestionado por molde, no se edita a mano)
-  20260607_*.json       # migraciones generadas
+migrations/             # sibling of models/, VISIBLE and versioned in git
+  snapshot.json         # previous state (managed by molde, not hand-edited)
+  20260607_*.json       # generated migrations
 ```
 
-- Un archivo `<Entity>.model` define **exactamente una tabla**.
-- El nombre del archivo es indicativo; el nombre real de la entidad/tabla se
-  toma del contenido.
-- `database.model` es opcional; si falta, se asumen valores por defecto.
+- A `<Entity>.model` file defines **exactly one table**.
+- The file name is indicative; the real entity/table name is taken from the content.
+- `database.model` is optional; if missing, defaults are assumed.
 
 ---
 
-## 3. Léxico
+## 3. Lexical structure
 
-| Elemento | Sintaxis | Notas |
+| Element | Syntax | Notes |
 |---|---|---|
-| Indentación | 2 espacios | define la estructura; sin tabs |
-| Comentario | `# …` hasta fin de línea | se descarta; no es el `comment` semántico |
-| Identificador | `[A-Za-z_][A-Za-z0-9_]*` | nombres de entidad/columna/etc. |
-| Escalar simple | `int`, `42`, `cascade` | sin comillas si no hay espacios/especiales |
-| Cadena | `"texto con espacios"` | comillas dobles; escapes `\"` `\\` |
-| Nulo | `~` | representa `null` (p. ej. en seed) |
-| Booleano | `true` / `false` | |
-| Lista inline | `[a, b, c]` | |
-| Objeto inline | `{k: v, k2: v2}` | |
-| Lista en bloque | líneas con `- …` | |
-| Bloque de texto | `|` + líneas indentadas | SQL multilínea (triggers, funciones, raw, computed) |
+| Indentation | 2 spaces | defines the structure; no tabs |
+| Comment | `# …` to end of line | discarded; not the semantic `comment` |
+| Identifier | `[A-Za-z_][A-Za-z0-9_]*` | entity/column/etc. names |
+| Simple scalar | `int`, `42`, `cascade` | no quotes if no spaces/specials |
+| String | `"text with spaces"` | double quotes; escapes `\"` `\\` |
+| Null | `~` | represents `null` (e.g. in seed) |
+| Boolean | `true` / `false` | |
+| Inline list | `[a, b, c]` | |
+| Inline object | `{k: v, k2: v2}` | |
+| Block list | lines with `- …` | |
+| Text block | `|` + indented lines | multiline SQL (triggers, functions, raw, computed) |
 
-Bloque de texto (block scalar), idéntico en espíritu a YAML `|`:
+Text block (block scalar), identical in spirit to YAML `|`:
 
 ```
 function: |
@@ -74,19 +73,19 @@ function: |
 
 ---
 
-## 4. Archivo de entidad
+## 4. Entity file
 
-Forma general (todas las secciones salvo la cabecera y `fields:` son opcionales):
+General form (all sections except the header and `fields:` are optional):
 
 ```
-<Entity>[: <table>]            # cabecera; ": <table>" solo si difiere del Entity
-  schema: <name>               # si difiere del default global
-  comment: "<texto>"           # COMMENT de la tabla
+<Entity>[: <table>]            # header; ": <table>" only if it differs from Entity
+  schema: <name>               # if it differs from the global default
+  comment: "<text>"            # table COMMENT
   fields:
-    <Col>: <type>[?] <facetas…>
+    <Col>: <type>[?] <facets…>
     …
-  key: [<cols>] [name=<n>]     # PK compuesta o con nombre explícito
-  belongs-to:                  # claves foráneas (lado dependiente)
+  key: [<cols>] [name=<n>]     # composite PK or PK with explicit name
+  belongs-to:                  # foreign keys (dependent side)
     <Nav>: {fk: …, references: …, onDelete: …, name: …}
   indexes:
     - <name>: {on: […], unique: …, method: …, operators: […], filter: …, expression: …}
@@ -94,35 +93,35 @@ Forma general (todas las secciones salvo la cabecera y `fields:` son opcionales)
     - <name>: {timing: …, events: […], function: …, sql: | …}
   seed:
     - {<Col>: <val>, …}
-  # azúcar de escritura:
-  owns <Type> { … }            # owned type → columnas con prefijo
-  discriminator: <Col>         # herencia TPH
+  # authoring sugar:
+  owns <Type> { … }            # owned type → prefixed columns
+  discriminator: <Col>         # TPH inheritance
   subtypes:
-    <SubType>: { <campos extra> }
+    <SubType>: { <extra fields> }
 ```
 
-### 4.1 Cabecera
+### 4.1 Header
 
-- `Customer` → entidad y tabla se llaman `Customer`.
-- `Customer: tbl_customer` → entidad `Customer`, tabla física `tbl_customer`.
-- `schema:` sobreescribe el `schema` global por defecto para esta tabla.
+- `Customer` → entity and table are both named `Customer`.
+- `Customer: tbl_customer` → entity `Customer`, physical table `tbl_customer`.
+- `schema:` overrides the global default `schema` for this table.
 
 ---
 
-## 5. Tipos lógicos
+## 5. Logical types
 
-El **tipo lógico** reemplaza a `clr_type`. El provider deriva el `store_type`
-por defecto a partir del tipo lógico + facetas. Mapeo canónico:
+The **logical type** replaces `clr_type`. The provider derives the default
+`store_type` from the logical type + facets. Canonical mapping:
 
-| Lógico | clr_type (IR) | store_type por defecto (ejemplo PG) |
+| Logical | clr_type (IR) | default store_type (PG example) |
 |---|---|---|
 | `int` | System.Int32 | integer |
 | `long` | System.Int64 | bigint |
 | `short` | System.Int16 | smallint |
 | `byte` | System.Byte | smallint |
 | `bool` | System.Boolean | boolean |
-| `string` | System.String | text / varchar(n) si `maxlen=` |
-| `decimal` | System.Decimal | numeric / numeric(p,s) si `precision=` |
+| `string` | System.String | text / varchar(n) if `maxlen=` |
+| `decimal` | System.Decimal | numeric / numeric(p,s) if `precision=` |
 | `double` | System.Double | double precision |
 | `float` | System.Single | real |
 | `datetime` | System.DateTime | timestamp |
@@ -131,55 +130,55 @@ por defecto a partir del tipo lógico + facetas. Mapeo canónico:
 | `time` | System.TimeOnly | time |
 | `guid` | System.Guid | uuid |
 | `bytes` | System.Byte[] | bytea |
-| `json` | System.String | jsonb (override con `dbtype=`) |
+| `json` | System.String | jsonb (override with `dbtype=`) |
 
-**Tipo nativo crudo.** Si el tipo no es un lógico conocido, se interpreta como
-`store_type` literal y `clr_type` queda sin determinar:
+**Raw native type.** If the type is not a known logical type, it is interpreted
+as a literal `store_type` and `clr_type` is left undetermined:
 
 ```
 Embedding: vector(1536)     # store_type = "vector(1536)"
 Search:    tsvector         # store_type = "tsvector"
 ```
 
-Equivalente con override sobre un lógico:
+Equivalent with an override on a logical type:
 
 ```
 Metadata: json dbtype=jsonb # clr System.String, store_type jsonb
 ```
 
-`?` tras el tipo marca la columna como **nullable**. Su ausencia = `NOT NULL`.
-(No existe faceta `required`: sería redundante con la ausencia de `?`.)
+A `?` after the type marks the column as **nullable**. Its absence = `NOT NULL`.
+(There is no `required` facet: it would be redundant with the absence of `?`.)
 
 ---
 
-## 6. Facetas de columna
+## 6. Column facets
 
-Tras `<Col>: <type>[?]`, una secuencia de facetas separadas por espacios.
+After `<Col>: <type>[?]`, a sequence of space-separated facets.
 
-**Booleanas** (presencia = activado):
+**Boolean** (presence = enabled):
 
-| Faceta | Campo IR |
+| Facet | IR field |
 |---|---|
-| `pk` | añade la columna a `primary_key` (PK simple; nombre por convención `PK_<table>`) |
+| `pk` | adds the column to `primary_key` (simple PK; name by convention `PK_<table>`) |
 | `identity` | `is_identity = true` |
-| `unique` | crea un índice único de 1 columna (`IX_<table>_<col>`) |
-| `stored` | `computed_stored = true` (usar junto a `computed=`) |
+| `unique` | creates a single-column unique index (`IX_<table>_<col>`) |
+| `stored` | `computed_stored = true` (use together with `computed=`) |
 
-**Con valor** (`clave=valor`):
+**With a value** (`key=value`):
 
-| Faceta | Campo IR |
+| Facet | IR field |
 |---|---|
 | `maxlen=<n>` | `max_length` |
 | `precision=<p>[,<s>]` | `precision`, `scale` |
-| `default=<sql>` | `default_value_sql` (SQL crudo; usar comillas si tiene espacios) |
+| `default=<sql>` | `default_value_sql` (raw SQL; use quotes if it contains spaces) |
 | `computed=<sql>` | `computed_sql` |
 | `collation=<name>` | `collation` |
-| `column=<db_name>` | nombre físico si difiere del nombre de la propiedad |
-| `dbtype=<store_type>` | `store_type` (override del tipo nativo exacto) |
-| `comment="<texto>"` | `comment` de la columna |
-| `pk=<name>` | PK simple con nombre explícito |
+| `column=<db_name>` | physical name if it differs from the property name |
+| `dbtype=<store_type>` | `store_type` (override of the exact native type) |
+| `comment="<text>"` | column `comment` |
+| `pk=<name>` | simple PK with an explicit name |
 
-Ejemplos:
+Examples:
 
 ```
 Id:    int pk identity
@@ -187,52 +186,53 @@ Name:  string maxlen=200
 Total: decimal precision=18,2
 Flag:  bool default=false
 Slug:  string computed="lower(name)" stored
-Body:  json dbtype=jsonb comment="payload crudo"
+Body:  json dbtype=jsonb comment="raw payload"
 ```
 
 ---
 
-## 7. Clave primaria
+## 7. Primary key
 
-- **Simple:** faceta `pk` en la columna. Nombre por convención `PK_<table>`,
-  o explícito con `pk=<name>`.
-- **Compuesta / con nombre a nivel tabla:** bloque `key:`.
+- **Simple:** the `pk` facet on the column. Name by convention `PK_<table>`,
+  or explicit with `pk=<name>`.
+- **Composite / named at the table level:** the `key:` block.
 
 ```
 key: [TenantId, Id] name=PK_Item
 ```
 
-Mapea a `PrimaryKey { name, columns }`.
+Maps to `PrimaryKey { name, columns }`.
 
 ---
 
-## 8. Relaciones (claves foráneas)
+## 8. Relationships (foreign keys)
 
-La FK vive en la tabla **dependiente**, bajo `belongs-to:`:
+The FK lives in the **dependent** table, under `belongs-to:`:
 
 ```
 belongs-to:
   Customer: {fk: CustomerId, references: Customer.Id, onDelete: cascade, name: FK_Order_Customer}
 ```
 
-| Clave | Campo IR | Notas |
+| Key | IR field | Notes |
 |---|---|---|
-| (etiqueta) | — | nombre de navegación (documental) |
-| `fk` | `columns` | columna(s) local(es); lista si compuesta: `[A, B]` |
-| `references` | `principal_table` (+ `principal_schema`) y `principal_columns` | `Tabla.Col` o `esquema.Tabla.[A,B]` |
+| (label) | — | navigation name (documentary) |
+| `fk` | `columns` | local column(s); a list if composite: `[A, B]` |
+| `references` | `principal_table` (+ `principal_schema`) and `principal_columns` | `Table.Col` or `schema.Table.[A,B]` |
 | `onDelete` | `on_delete` | `no_action`\|`restrict`\|`cascade`\|`set_null`\|`set_default` |
-| `name` | `name` | opcional; convención `FK_<tabla>_<principal>` |
+| `name` | `name` | optional; convention `FK_<table>_<principal>` |
 
-Las navegaciones **inversas** (lado principal) **no se modelan**: la FK ya queda
-descrita en el lado dependiente. Listarlas duplicaría información sin generar
-DDL; si se necesitan diagramas/documentación se derivan del conjunto de FKs.
+**Inverse** navigations (principal side) are **not modeled**: the FK is already
+described on the dependent side. Listing them would duplicate information without
+generating DDL; if diagrams/documentation are needed they are derived from the
+set of FKs.
 
 ---
 
-## 9. Índices
+## 9. Indexes
 
-- **Inline:** faceta `unique` en una columna (índice único de 1 columna).
-- **Bloque `indexes:`** para todo lo demás:
+- **Inline:** the `unique` facet on a column (single-column unique index).
+- **`indexes:` block** for everything else:
 
 ```
 indexes:
@@ -242,32 +242,32 @@ indexes:
   - ix_active:         {on: [Status], filter: "Deleted = false"}
 ```
 
-| Clave | Campo IR |
+| Key | IR field |
 |---|---|
-| (etiqueta) | `name` |
+| (label) | `name` |
 | `on` | `columns` |
 | `unique` | `is_unique` |
-| `filter` | `filter` (índice parcial) |
+| `filter` | `filter` (partial index) |
 | `method` | `method` (`gin`, `gist`, `hnsw`, `ivfflat`, …) |
-| `operators` | `operators` (operator class por columna) |
-| `expression` | `expression` (índice funcional / full-text; manda sobre `on`) |
+| `operators` | `operators` (operator class per column) |
+| `expression` | `expression` (functional / full-text index; takes precedence over `on`) |
 
 ---
 
-## 10. Owned types (azúcar)
+## 10. Owned types (sugar)
 
 ```
 fields:
   Contact: owns ContactInfo {Phone: string?, City: string? maxlen=80}
 ```
 
-Se expande a columnas planas con prefijo `<Prop>_<Campo>`:
-`Contact_Phone`, `Contact_City`. En el IR **solo existen las columnas planas**.
-El scaffold desde BD emite las columnas planas (no reconstruye `owns`).
+Expands to flat columns with the `<Prop>_<Field>` prefix:
+`Contact_Phone`, `Contact_City`. In the IR **only the flat columns exist**.
+Scaffolding from the DB emits the flat columns (it does not reconstruct `owns`).
 
 ---
 
-## 11. Herencia TPH (azúcar)
+## 11. TPH inheritance (sugar)
 
 ```
 Payment: Payment
@@ -280,26 +280,25 @@ Payment: Payment
     CashPayment: {Note: string?}
 ```
 
-Se expande a **una sola tabla** con: todas las columnas base + las de cada
-subtipo (forzadas a `nullable`) + una columna discriminadora
-(`Discriminator string`). En el IR es una tabla plana. El scaffold desde BD no
-reconstruye `subtypes` (emite las columnas planas + la columna discriminadora
-como una columna normal).
+Expands to **a single table** with: all the base columns + those of each subtype
+(forced to `nullable`) + a discriminator column (`Discriminator string`). In the
+IR it is a flat table. Scaffolding from the DB does not reconstruct `subtypes`
+(it emits the flat columns + the discriminator column as a normal column).
 
 ---
 
-## 12. Value converters / enums (azúcar)
+## 12. Value converters / enums (sugar)
 
 ```
 Status: enum[Pending, Shipped] as=string maxlen=20
 ```
 
-- `as=string` → columna `string` (store_type varchar); los valores válidos son
-  documentación (molde no añade CHECK por defecto).
-- `as=int` → columna `int`.
+- `as=string` → `string` column (varchar store_type); the valid values are
+  documentation (molde does not add a CHECK by default).
+- `as=int` → `int` column.
 
-En el IR es una columna escalar normal. El scaffold desde BD ve la columna
-escalar (no reconstruye el enum).
+In the IR it is a normal scalar column. Scaffolding from the DB sees the scalar
+column (it does not reconstruct the enum).
 
 ---
 
@@ -311,12 +310,12 @@ seed:
   - {Id: 2, Name: "Globex", Email: ~}
 ```
 
-Mapea a `Table.seed_data` (lista de mapas columna→valor JSON). `~` = null.
-El diff las materializa como `INSERT`/`UPDATE`/`DELETE`.
+Maps to `Table.seed_data` (a list of column→JSON-value maps). `~` = null.
+The diff materializes them as `INSERT`/`UPDATE`/`DELETE`.
 
 ---
 
-## 14. Triggers (por entidad)
+## 14. Triggers (per entity)
 
 ```
 triggers:
@@ -329,22 +328,22 @@ triggers:
         FOR EACH ROW EXECUTE FUNCTION normalize_body()
 ```
 
-| Clave | Campo IR (`Trigger`) |
+| Key | IR field (`Trigger`) |
 |---|---|
-| (etiqueta) | `name` |
-| (entidad) | `table` (+ `schema`) |
+| (label) | `name` |
+| (entity) | `table` (+ `schema`) |
 | `timing` | `timing` (`before`\|`after`\|`instead_of`) |
 | `events` | `events` (`insert`\|`update`\|`delete`\|`truncate`) |
-| `function` | `function` (informativo) |
-| `sql` | `definition` (DDL crudo; fuente de verdad para recrearlo) |
+| `function` | `function` (informational) |
+| `sql` | `definition` (raw DDL; source of truth for recreating it) |
 
 ---
 
-## 15. Archivo global `database.model`
+## 15. Global `database.model` file
 
 ```
 schema: public                 # default_schema
-product-version: 9.0.0         # informativo (opcional)
+product-version: 9.0.0         # informational (optional)
 extensions: [pg_trgm, unaccent, vector]
 functions:
   - normalize_body: |
@@ -355,19 +354,19 @@ raw:
       CREATE FULLTEXT CATALOG ft AS DEFAULT
 ```
 
-| Clave | Campo IR (`DatabaseModel`) |
+| Key | IR field (`DatabaseModel`) |
 |---|---|
 | `schema` | `default_schema` |
 | `product-version` | `product_version` |
 | `extensions` | `extensions` |
-| `functions` | `functions` (lista de `DbFunction { name[, schema], definition }`) |
-| `raw` | `raw_objects` (DDL verbatim) |
+| `functions` | `functions` (list of `DbFunction { name[, schema], definition }`) |
+| `raw` | `raw_objects` (verbatim DDL) |
 
-`format_version` lo gestiona molde internamente (no se edita).
+`format_version` is managed by molde internally (not edited).
 
 ---
 
-## 16. Mapeo formal DSL ↔ IR (cobertura completa)
+## 16. Formal DSL ↔ IR mapping (full coverage)
 
 | IR | molde |
 |---|---|
@@ -376,19 +375,19 @@ raw:
 | `DatabaseModel.extensions` | `database.model: extensions:` |
 | `DatabaseModel.functions` | `database.model: functions:` |
 | `DatabaseModel.raw_objects` | `database.model: raw:` |
-| `Table.name` / `.schema` | cabecera `<Entity>: <table>` / `schema:` |
-| `Table.clr_type` | derivado (no se escribe; metadato) |
+| `Table.name` / `.schema` | header `<Entity>: <table>` / `schema:` |
+| `Table.clr_type` | derived (not written; metadata) |
 | `Table.comment` | `comment:` |
 | `Table.columns` | `fields:` |
-| `Table.primary_key` | faceta `pk` o bloque `key:` |
+| `Table.primary_key` | `pk` facet or `key:` block |
 | `Table.foreign_keys` | `belongs-to:` |
-| `Table.indexes` | faceta `unique` o bloque `indexes:` |
+| `Table.indexes` | `unique` facet or `indexes:` block |
 | `Table.triggers` | `triggers:` |
 | `Table.seed_data` | `seed:` |
-| `Column.name` | etiqueta del campo (físico: `column=`) |
-| `Column.clr_type` | tipo lógico |
-| `Column.store_type` | tipo nativo crudo o `dbtype=` |
-| `Column.is_nullable` | sufijo `?` |
+| `Column.name` | field label (physical: `column=`) |
+| `Column.clr_type` | logical type |
+| `Column.store_type` | raw native type or `dbtype=` |
+| `Column.is_nullable` | `?` suffix |
 | `Column.is_identity` | `identity` |
 | `Column.max_length` | `maxlen=` |
 | `Column.precision` / `.scale` | `precision=p,s` |
@@ -397,30 +396,30 @@ raw:
 | `Column.collation` | `collation=` |
 | `Column.comment` | `comment=` |
 | `PrimaryKey.{name,columns}` | `pk` / `pk=` / `key:` |
-| `ForeignKey.*` | `belongs-to:` (ver §8) |
-| `Index.*` | `indexes:` (ver §9) |
-| `Trigger.*` | `triggers:` (ver §14) |
-| `DbFunction.*` | `functions:` (ver §15) |
+| `ForeignKey.*` | `belongs-to:` (see §8) |
+| `Index.*` | `indexes:` (see §9) |
+| `Trigger.*` | `triggers:` (see §14) |
+| `DbFunction.*` | `functions:` (see §15) |
 
-**Sin huérfanos:** todos los campos del IR tienen representación. Los únicos no
-escritos son `format_version` (interno) y `clr_type` de tabla (metadato derivado).
-
----
-
-## 17. Formas canónicas vs azúcar
-
-- **Canónico** = lo que produce el emitter (scaffold BD→`.model`): columnas
-  planas, FKs explícitas, índices explícitos, sin `owns`/`subtypes`/`enum`.
-- **Azúcar** = atajos de escritura humana (`owns`, `subtypes`, `enum[…]`,
-  `has-many`) que se expanden al parsear. **No** sobreviven a un re-emit.
-
-Garantía: `parse(emit(ir)) == ir` para todo IR. `emit(parse(dsl))` produce la
-forma canónica equivalente (puede diferir textualmente del azúcar original;
-como un formatter).
+**No orphans:** every IR field has a representation. The only ones not written
+are `format_version` (internal) and the table `clr_type` (derived metadata).
 
 ---
 
-## 18. Gramática (EBNF informal)
+## 17. Canonical forms vs sugar
+
+- **Canonical** = what the emitter produces (scaffold DB→`.model`): flat columns,
+  explicit FKs, explicit indexes, without `owns`/`subtypes`/`enum`.
+- **Sugar** = human authoring shortcuts (`owns`, `subtypes`, `enum[…]`,
+  `has-many`) that expand on parsing. They do **not** survive a re-emit.
+
+Guarantee: `parse(emit(ir)) == ir` for any IR. `emit(parse(dsl))` produces the
+equivalent canonical form (it may differ textually from the original sugar; like
+a formatter).
+
+---
+
+## 18. Grammar (informal EBNF)
 
 ```ebnf
 file        = entity_file | database_file ;
@@ -470,7 +469,7 @@ block       = "|" NEWLINE INDENT { TEXT } DEDENT ;
 
 ---
 
-## 19. Ejemplo completo (ver `examples/models/`)
+## 19. Full example (see `examples/models/`)
 
 `database.model`
 ```
@@ -514,7 +513,7 @@ Payment
     CashPayment: {Note: string?}
 ```
 
-Forma **canónica** de `Customer.model` tras un re-emit (azúcar expandida):
+**Canonical** form of `Customer.model` after a re-emit (sugar expanded):
 ```
 Customer
   fields:
@@ -531,15 +530,14 @@ Customer
 
 ---
 
-## 20. Decisiones (resueltas)
+## 20. Decisions (resolved)
 
-1. **Nombre y extensión:** lenguaje molde, extensión **`.model`**. ✔
-2. **`?` como única marca de nullabilidad** (sin `required`). ✔
-3. **Navegaciones inversas: NO se modelan** (ver §8). Se evita duplicación; sin
-   efecto en el DDL. ✔
-4. **Snapshot y migraciones en `migrations/`** (visible, hermano de `models/`,
-   versionado en git; `migrations/snapshot.json`). ✔
-5. **Enums sin CHECK** por defecto: `enum` solo fija el tipo de columna (alineado
-   con EF y con un round-trip limpio). Faceta `check` queda como extensión
-   futura opcional. ✔
-```
+1. **Name and extension:** molde language, extension **`.model`**. ✔
+2. **`?` as the only nullability marker** (no `required`). ✔
+3. **Inverse navigations: NOT modeled** (see §8). Avoids duplication; no effect
+   on the DDL. ✔
+4. **Snapshot and migrations in `migrations/`** (visible, sibling of `models/`,
+   versioned in git; `migrations/snapshot.json`). ✔
+5. **Enums without CHECK** by default: `enum` only sets the column type (aligned
+   with EF and with a clean round-trip). A `check` facet remains an optional
+   future extension. ✔

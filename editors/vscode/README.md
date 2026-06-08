@@ -1,63 +1,64 @@
-# molde — soporte de VS Code para archivos `.model`
+# molde — VS Code support for `.model` files
 
-Extensión de VS Code para el lenguaje de modelos **molde** de molde. Combina:
+VS Code extension for molde's **molde** model language. It combines:
 
-- **Resaltado de sintaxis** — gramática TextMate (`syntaxes/molde.tmLanguage.json`),
-  sin dependencias.
-- **Formateo** — format-on-save vía el language server (forma canónica del
-  emitter de molde). También disponible en CLI con `molde fmt`.
-- **Navegación y dependencias** — provisto por el language server `molde-lsp`:
-  - Diagnostics: errores de parseo inline (con línea/columna).
-  - Outline (document symbols): estructura de cada entidad (Ctrl+Shift+O).
-  - Go-to-definition: en `references: Tabla.col` salta a `Tabla.model`.
-  - Find-references: sobre un nombre de tabla, lista todas las FKs que la
-    apuntan (el grafo de dependencias).
-  - Hover y autocompletado de nombres de tabla en `references:`.
+- **Syntax highlighting** — TextMate grammar (`syntaxes/molde.tmLanguage.json`),
+  no dependencies.
+- **Formatting** — format-on-save via the language server (molde emitter's
+  canonical form). Also available on the CLI with `molde fmt`.
+- **Navigation and dependencies** — provided by the `molde-lsp` language server:
+  - Diagnostics: inline parse errors (with line/column).
+  - Outline (document symbols): structure of each entity (Ctrl+Shift+O).
+  - Go-to-definition: on `references: Table.col` jumps to `Table.model`.
+  - Find-references: on a table name, lists all the FKs that point to it
+    (the dependency graph).
+  - Hover and autocompletion of table names in `references:`.
 
-## Requisitos
+## Requirements
 
-El binario del language server **`molde-lsp`** debe estar compilado y accesible:
+The **`molde-lsp`** language server binary must be compiled and accessible:
 
 ```bash
-# Desde la raíz del repo
+# From the repo root
 cargo build -p molde-lsp --release
-# El binario queda en target/release/molde-lsp
+# The binary ends up in target/release/molde-lsp
 ```
 
-Ponlo en el `PATH`, o indica su ruta en los ajustes de VS Code:
+Put it on the `PATH`, or set its path in the VS Code settings:
 
 ```json
 // settings.json
-"molde.server.path": "/ruta/al/repo/target/release/molde-lsp"
+"molde.server.path": "/path/to/repo/target/release/molde-lsp"
 ```
 
-## Compilar e instalar la extensión
+## Build and install the extension
 
 ```bash
 cd editors/vscode
 npm install
-npm run compile        # genera out/extension.js
+npm run compile        # generates out/extension.js
 
-# Opción A — empaquetar e instalar:
-npx @vscode/vsce package        # genera molde-language-0.0.1.vsix
+# Option A — package and install:
+npx @vscode/vsce package        # generates molde-language-0.0.1.vsix
 code --install-extension molde-language-0.0.1.vsix
 
-# Opción B — desarrollo: abre esta carpeta en VS Code y pulsa F5
+# Option B — development: open this folder in VS Code and press F5
 # (Extension Development Host).
 ```
 
-## Ajustes
+## Settings
 
-| Ajuste | Por defecto | Descripción |
+| Setting | Default | Description |
 |---|---|---|
-| `molde.server.path` | `molde-lsp` | Ruta al binario del language server. |
-| `molde.server.enabled` | `true` | Activa el language server. |
+| `molde.server.path` | `molde-lsp` | Path to the language server binary. |
+| `molde.server.enabled` | `true` | Enables the language server. |
 
-Con `editor.formatOnSave` activo, al guardar un `.model` se reformatea a la forma
-canónica.
+With `editor.formatOnSave` enabled, saving a `.model` reformats it to the
+canonical form.
 
-## Sin el language server
+## Without the language server
 
-Si solo quieres resaltado (sin navegación), pon `molde.server.enabled` en `false`:
-la gramática TextMate funciona sola. Como alternativa mínima sin extensión,
-`"files.associations": { "*.model": "yaml" }` da coloreado aproximado.
+If you only want highlighting (no navigation), set `molde.server.enabled` to
+`false`: the TextMate grammar works on its own. As a minimal alternative without
+the extension, `"files.associations": { "*.model": "yaml" }` gives approximate
+coloring.

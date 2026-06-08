@@ -1,4 +1,4 @@
-//! Round-trip `IR → .model → IR` y verificación del azúcar de escritura.
+//! Round-trip `IR → .model → IR` and verification of the authoring sugar.
 
 use std::collections::BTreeMap;
 
@@ -123,7 +123,7 @@ fn sample() -> DatabaseModel {
         seed_data: vec![],
     });
 
-    // Document (esquema propio + tipos nativos + computed + dbtype + índices + trigger)
+    // Document (own schema + native types + computed + dbtype + indexes + trigger)
     let mut did = col("Id", "System.Int32", false);
     did.is_identity = true;
     let mut embedding = Column {
@@ -185,7 +185,7 @@ fn sample() -> DatabaseModel {
         seed_data: vec![],
     });
 
-    // TenantItem (PK compuesta con nombre no convencional + FK con set_null)
+    // TenantItem (composite PK with non-conventional name + FK with set_null)
     m.tables.push(Table {
         name: "TenantItem".into(),
         schema: None,
@@ -228,7 +228,7 @@ fn row(pairs: &[(&str, serde_json::Value)]) -> BTreeMap<String, serde_json::Valu
 fn round_trip_ir_dsl_ir() {
     let original = sample();
     let files = emit_project(&original);
-    // Vista de depuración: imprime los archivos si el test falla.
+    // Debug view: print the files if the test fails.
     let refs: Vec<(&str, &str)> = files
         .iter()
         .map(|f| (f.name.as_str(), f.contents.as_str()))
@@ -245,7 +245,7 @@ fn round_trip_ir_dsl_ir() {
 }
 
 #[test]
-fn emite_archivos_esperados() {
+fn emits_expected_files() {
     let files = emit_project(&sample());
     let names: Vec<&str> = files.iter().map(|f| f.name.as_str()).collect();
     assert!(names.contains(&"database.model"));
@@ -255,7 +255,7 @@ fn emite_archivos_esperados() {
 }
 
 #[test]
-fn azucar_owns_se_expande_a_columnas_planas() {
+fn owns_sugar_expands_to_flat_columns() {
     let src = "Customer\n  fields:\n    Id: int pk\n    Contact: owns ContactInfo {Phone: string?, City: string? maxlen=80}\n";
     let t = parse_entity(src).unwrap();
     let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
@@ -266,7 +266,7 @@ fn azucar_owns_se_expande_a_columnas_planas() {
 }
 
 #[test]
-fn azucar_enum_se_vuelve_columna_escalar() {
+fn enum_sugar_becomes_scalar_column() {
     let src = "Order\n  fields:\n    Id: int pk\n    Status: enum[Pending, Shipped] as=string maxlen=20\n";
     let t = parse_entity(src).unwrap();
     let status = t.columns.iter().find(|c| c.name == "Status").unwrap();
@@ -275,14 +275,14 @@ fn azucar_enum_se_vuelve_columna_escalar() {
 }
 
 #[test]
-fn azucar_subtypes_funde_en_una_tabla_con_discriminador() {
+fn subtypes_sugar_merges_into_one_table_with_discriminator() {
     let src = "Payment\n  discriminator: Discriminator\n  fields:\n    Id: int pk identity\n    Amount: decimal\n  subtypes:\n    CardPayment: {CardNumber: string}\n    CashPayment: {Note: string?}\n";
     let t = parse_entity(src).unwrap();
     let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
     assert!(names.contains(&"Discriminator"));
     assert!(names.contains(&"CardNumber"));
     assert!(names.contains(&"Note"));
-    // Las columnas de subtipo son nullable.
+    // The subtype columns are nullable.
     let card = t.columns.iter().find(|c| c.name == "CardNumber").unwrap();
     assert!(card.is_nullable);
     let disc = t

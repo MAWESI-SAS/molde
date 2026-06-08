@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-description = "Autoría model-first de migraciones (diff contra snapshot)"
+description = "Model-first authoring of migrations (diff against snapshot)"
 
 [dependencies]
 molde-core = { workspace = true }

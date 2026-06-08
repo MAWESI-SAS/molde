@@ -1,8 +1,8 @@
 //! # molde-design
 //!
-//! Autoría de migraciones model-first:
-//! - [`author`]: compara el modelo (parseado de los `.model`) contra el snapshot,
-//!   calcula el diff y escribe la migración + el snapshot actualizado.
+//! Model-first migration authoring:
+//! - [`author`]: compares the model (parsed from the `.model` files) against the
+//!   snapshot, computes the diff, and writes the migration + the updated snapshot.
 
 pub mod author;
 

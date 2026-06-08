@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-description = "Generación de SQL por motor (trait SqlGenerator) para molde"
+description = "Per-engine SQL generation (SqlGenerator trait) for molde"
 
 [dependencies]
 molde-core = { workspace = true }

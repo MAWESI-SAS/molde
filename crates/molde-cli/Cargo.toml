@@ -5,15 +5,15 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-description = "molde — herramienta de esquema (introspección, migraciones, aplicación) en Rust"
+description = "molde — a Rust schema tool (introspection, migrations, apply)"
 
 [[bin]]
 name = "molde"
 path = "src/main.rs"
 
 [features]
-# Backend TLS de sqlx. Por defecto rustls; para servidores con certificados
-# X.509 v1 que rustls rechaza, compilar con:
+# sqlx TLS backend. Defaults to rustls; for servers with X.509 v1 certificates
+# that rustls rejects, build with:
 #   cargo build -p molde-cli --no-default-features --features tls-native-tls
 default = ["tls-rustls"]
 tls-rustls = ["molde-scaffold/tls-rustls", "molde-migrate/tls-rustls"]
@@ -32,7 +32,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tokio = { workspace = true }
 time = { workspace = true }
-# UX interactiva: prompts, spinner y color (con autodetección de TTY).
+# Interactive UX: prompts, spinner, and color (with TTY auto-detection).
 dialoguer = { version = "0.11", default-features = false, features = ["password"] }
 indicatif = "0.17"
 console = "0.15"

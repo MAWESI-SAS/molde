@@ -1,8 +1,8 @@
-//! El trait [`SqlGenerator`] y utilidades compartidas.
+//! The [`SqlGenerator`] trait and shared utilities.
 //!
-//! Cada motor implementa este trait. El núcleo (`molde-core`) produce
-//! [`Operation`]s agnósticas; el provider las traduce al dialecto SQL concreto,
-//! incluyendo el mapeo de tipo CLR → tipo de almacenamiento.
+//! Each engine implements this trait. The core (`molde-core`) produces
+//! engine-agnostic [`Operation`]s; the provider translates them to the concrete
+//! SQL dialect, including the CLR type → store type mapping.
 
 use std::collections::BTreeMap;
 
@@ -12,34 +12,34 @@ use serde_json::Value;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
-    #[error("operación aún no soportada por el provider '{provider}': {detail}")]
+    #[error("operation not yet supported by provider '{provider}': {detail}")]
     Unsupported {
         provider: &'static str,
         detail: String,
     },
-    #[error("no se pudo mapear el tipo CLR '{clr}' (columna '{column}')")]
+    #[error("could not map CLR type '{clr}' (column '{column}')")]
     UnmappedType { clr: String, column: String },
 }
 
-/// Genera SQL para un motor concreto a partir de operaciones de migración.
+/// Generates SQL for a concrete engine from migration operations.
 pub trait SqlGenerator {
-    /// Nombre del proveedor (para diagnósticos y `ProductVersion`).
+    /// Provider name (for diagnostics and `ProductVersion`).
     fn name(&self) -> &'static str;
 
-    /// Carácter(es) de citado de identificadores. SQLite/Postgres usan `"`,
+    /// Identifier quoting character(s). SQLite/Postgres use `"`,
     /// SQL Server `[ ]`, MySQL backticks.
     fn quote_ident(&self, ident: &str) -> String {
         format!("\"{}\"", ident.replace('"', "\"\""))
     }
 
-    /// Mapea una columna a su tipo de almacenamiento. Si la columna ya trae
-    /// `store_type` explícito se respeta; si no, el provider lo deriva del
-    /// tipo CLR + facetas.
+    /// Maps a column to its store type. If the column already carries an
+    /// explicit `store_type` it is respected; otherwise the provider derives it
+    /// from the CLR type + facets.
     fn store_type_for(&self, column: &Column) -> Result<String, ProviderError>;
 
-    /// SQL para crear la tabla de historial `__EFMigrationsHistory` si no existe.
-    /// El default sirve a Postgres/SQLite/MySQL (`CREATE TABLE IF NOT EXISTS`);
-    /// SQL Server lo sobreescribe (no soporta esa sintaxis).
+    /// SQL to create the `__EFMigrationsHistory` history table if it does not exist.
+    /// The default works for Postgres/SQLite/MySQL (`CREATE TABLE IF NOT EXISTS`);
+    /// SQL Server overrides it (it does not support that syntax).
     fn create_history_table_sql(&self) -> String {
         format!(
             "CREATE TABLE IF NOT EXISTS {t} ({id} varchar(150) NOT NULL, \
@@ -50,12 +50,12 @@ pub trait SqlGenerator {
         )
     }
 
-    /// Traduce una única operación a una o más sentencias SQL.
+    /// Translates a single operation into one or more SQL statements.
     fn emit(&self, op: &Operation) -> Result<Vec<String>, ProviderError>;
 
-    /// Warn-skip para objetos de BD no modelables (funciones/triggers) en motores
-    /// que aún no los soportan. Devuelve SQL vacío con un aviso, igual que el
-    /// manejo de FKs en SQLite. Postgres los implementa de verdad.
+    /// Warn-skip for non-modelable DB objects (functions/triggers) on engines
+    /// that do not support them yet. Returns empty SQL with a warning, just like
+    /// the handling of FKs in SQLite. Postgres implements them for real.
     fn skip_db_object(&self, op: &Operation) -> Vec<String> {
         let (kind, name) = match op {
             Operation::EnsureExtension { name } => ("CREATE EXTENSION", name.as_str()),
@@ -63,17 +63,17 @@ pub trait SqlGenerator {
             Operation::DropFunction { name, .. } => ("DROP FUNCTION", name.as_str()),
             Operation::CreateTrigger { trigger, .. } => ("CREATE TRIGGER", trigger.name.as_str()),
             Operation::DropTrigger { name, .. } => ("DROP TRIGGER", name.as_str()),
-            _ => ("operación", ""),
+            _ => ("operation", ""),
         };
         tracing::warn!(
-            "el provider '{}' no soporta {kind}; se omite '{name}'",
+            "provider '{}' does not support {kind}; skipping '{name}'",
             self.name()
         );
         Vec::new()
     }
 
-    /// Literal SQL para `true`/`false`. Por defecto `1`/`0` (SQLite/MySQL/SQL
-    /// Server); Postgres lo sobreescribe con `TRUE`/`FALSE`.
+    /// SQL literal for `true`/`false`. Defaults to `1`/`0` (SQLite/MySQL/SQL
+    /// Server); Postgres overrides it with `TRUE`/`FALSE`.
     fn bool_literal(&self, b: bool) -> &'static str {
         if b {
             "1"
@@ -82,19 +82,19 @@ pub trait SqlGenerator {
         }
     }
 
-    /// Render de un valor JSON como literal SQL (para datos sembrados).
+    /// Renders a JSON value as a SQL literal (for seed data).
     fn sql_value(&self, v: &Value) -> String {
         match v {
             Value::Null => "NULL".to_string(),
             Value::Bool(b) => self.bool_literal(*b).to_string(),
             Value::Number(n) => n.to_string(),
             Value::String(s) => format!("'{}'", s.replace('\'', "''")),
-            // Arrays/objetos: como texto JSON entre comillas.
+            // Arrays/objects: as quoted JSON text.
             other => format!("'{}'", other.to_string().replace('\'', "''")),
         }
     }
 
-    /// Nombre cualificado `schema.tabla` (o solo `tabla` si no hay esquema).
+    /// Qualified name `schema.table` (or just `table` if there is no schema).
     fn qualify(&self, schema: Option<&str>, name: &str) -> String {
         match schema {
             Some(s) => format!("{}.{}", self.quote_ident(s), self.quote_ident(name)),
@@ -102,7 +102,7 @@ pub trait SqlGenerator {
         }
     }
 
-    /// `INSERT` de una fila sembrada.
+    /// `INSERT` of a seed row.
     fn emit_insert_data(
         &self,
         schema: Option<&str>,
@@ -125,7 +125,7 @@ pub trait SqlGenerator {
         )]
     }
 
-    /// `DELETE` de una fila sembrada por su clave.
+    /// `DELETE` of a seed row by its key.
     fn emit_delete_data(
         &self,
         schema: Option<&str>,
@@ -139,7 +139,7 @@ pub trait SqlGenerator {
         )]
     }
 
-    /// `UPDATE` de los valores no-clave de una fila sembrada.
+    /// `UPDATE` of the non-key values of a seed row.
     fn emit_update_data(
         &self,
         schema: Option<&str>,
@@ -159,7 +159,7 @@ pub trait SqlGenerator {
         )]
     }
 
-    /// Predicado `col = val AND …` a partir de una clave.
+    /// `col = val AND …` predicate built from a key.
     fn key_predicate(&self, key: &BTreeMap<String, Value>) -> String {
         key.iter()
             .map(|(c, v)| format!("{} = {}", self.quote_ident(c), self.sql_value(v)))
@@ -167,7 +167,7 @@ pub trait SqlGenerator {
             .join(" AND ")
     }
 
-    /// Traduce una lista de operaciones (atajo conveniente).
+    /// Translates a list of operations (convenience shortcut).
     fn emit_all(&self, ops: &[Operation]) -> Result<Vec<String>, ProviderError> {
         let mut out = Vec::new();
         for op in ops {

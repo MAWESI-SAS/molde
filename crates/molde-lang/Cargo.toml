@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-description = "molde — lenguaje de modelos de molde: parser y emitter (texto .model ↔ IR)"
+description = "molde — molde model language: parser and emitter (.model text ↔ IR)"
 
 [dependencies]
 molde-core = { workspace = true }

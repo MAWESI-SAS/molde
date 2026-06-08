@@ -1,10 +1,10 @@
 //! # molde-scaffold
 //!
-//! Database-first: lee el esquema de una base de datos existente y genera los
-//! archivos `.model` (lenguaje molde).
+//! Database-first: reads the schema of an existing database and generates the
+//! `.model` files (molde language).
 //!
-//! - [`reader`]: catálogo de la BD → [`molde_core::DatabaseModel`] (por motor).
-//! - [`build_model_files`]: modelo canonizado → archivos `.model`.
+//! - [`reader`]: DB catalog → [`molde_core::DatabaseModel`] (per engine).
+//! - [`build_model_files`]: canonicalized model → `.model` files.
 
 pub mod reader;
 
@@ -14,8 +14,8 @@ pub use reader::ReadError;
 use molde_core::model::{Column, DatabaseModel};
 use molde_providers::Provider;
 
-/// Pipeline database-first hacia el lenguaje molde: conecta, lee el modelo, lo
-/// canoniza para una salida limpia y emite los archivos `.model`.
+/// Database-first pipeline toward the molde language: connects, reads the model,
+/// canonicalizes it for clean output and emits the `.model` files.
 pub async fn build_model_files(
     url: &str,
     provider: Provider,
@@ -26,11 +26,11 @@ pub async fn build_model_files(
     Ok(molde_lang::emit_project(&model))
 }
 
-/// Reduce el ruido del `.model` generado desde una BD real:
-/// - quita el `store_type` exacto cuando es el convencional para el tipo lógico
-///   (se vuelve a derivar al aplicar; los tipos exóticos como jsonb/vector lo
-///   conservan vía `dbtype=`), igual que el scaffold C# omite `HasColumnType`;
-/// - quita el `schema` de cada tabla cuando coincide con el esquema por defecto.
+/// Reduces the noise of the `.model` generated from a real DB:
+/// - drops the exact `store_type` when it is the conventional one for the logical
+///   type (it is re-derived on apply; exotic types like jsonb/vector keep it
+///   via `dbtype=`), just as the C# scaffold omits `HasColumnType`;
+/// - drops each table's `schema` when it matches the default schema.
 pub fn canonicalize_for_models(model: &mut DatabaseModel) {
     let default_schema = model.default_schema.clone();
     for t in &mut model.tables {
@@ -41,8 +41,8 @@ pub fn canonicalize_for_models(model: &mut DatabaseModel) {
             if c.clr_type.is_some() && exotic_store_type(c).is_none() {
                 c.store_type = None;
             }
-            // precision/scale solo aplican a decimales; en enteros, Postgres
-            // expone numeric_precision (bits) que aquí es ruido.
+            // precision/scale only apply to decimals; on integers, Postgres
+            // exposes numeric_precision (bits) which is noise here.
             if c.clr_type.as_deref() != Some("System.Decimal") {
                 c.precision = None;
                 c.scale = None;
@@ -56,10 +56,10 @@ pub fn canonicalize_for_models(model: &mut DatabaseModel) {
     }
 }
 
-/// Devuelve el `store_type` solo si NO es convencional para su tipo lógico (jsonb,
-/// arrays, citext, vector(N), tsvector, inet…). Los tipos convencionales
-/// (varchar, integer, numeric, uuid, timestamp…) se derivan del tipo lógico al
-/// aplicar, así que en el `.model` se omiten.
+/// Returns the `store_type` only if it is NOT conventional for its logical type
+/// (jsonb, arrays, citext, vector(N), tsvector, inet…). Conventional types
+/// (varchar, integer, numeric, uuid, timestamp…) are derived from the logical
+/// type on apply, so they are omitted in the `.model`.
 fn exotic_store_type(col: &Column) -> Option<&str> {
     let st = col.store_type.as_deref()?;
     let base = st
@@ -147,27 +147,27 @@ mod tests {
     }
 
     #[test]
-    fn canonicalize_limpia_ruido_y_conserva_exoticos() {
+    fn canonicalize_cleans_noise_and_keeps_exotics() {
         use molde_core::model::DatabaseModel;
         let mut m = DatabaseModel::empty();
         m.default_schema = Some("public".into());
 
         let mut id = col("Id", "System.Int32", false, true);
-        id.precision = Some(32); // ruido de Postgres para enteros
+        id.precision = Some(32); // Postgres noise for integers
         id.scale = Some(0);
         let mut name = col("Name", "System.String", false, false);
-        name.store_type = Some("character varying(200)".into()); // convencional → se quita
+        name.store_type = Some("character varying(200)".into()); // conventional → dropped
         name.max_length = Some(200);
         let mut total = col("Total", "System.Decimal", false, false);
-        total.store_type = Some("numeric(18,2)".into()); // convencional → se quita
+        total.store_type = Some("numeric(18,2)".into()); // conventional → dropped
         total.precision = Some(18);
-        total.scale = Some(2); // decimal → se conserva
+        total.scale = Some(2); // decimal → kept
         let mut meta = col("Meta", "System.String", true, false);
-        meta.store_type = Some("jsonb".into()); // exótico → se conserva como dbtype
+        meta.store_type = Some("jsonb".into()); // exotic → kept as dbtype
 
         m.tables.push(Table {
             name: "Customer".into(),
-            schema: Some("public".into()), // == default → se quita
+            schema: Some("public".into()), // == default → dropped
             clr_type: None,
             comment: None,
             columns: vec![id, name, total, meta],
@@ -182,35 +182,27 @@ mod tests {
         let t = &m.tables[0];
         assert_eq!(t.schema, None);
         let id = t.column("Id").unwrap();
-        assert_eq!(id.precision, None, "precision de entero es ruido");
+        assert_eq!(id.precision, None, "integer precision is noise");
         let name = t.column("Name").unwrap();
-        assert_eq!(name.store_type, None, "varchar convencional se quita");
+        assert_eq!(name.store_type, None, "conventional varchar is dropped");
         assert_eq!(name.max_length, Some(200));
         let total = t.column("Total").unwrap();
-        assert_eq!(total.store_type, None, "numeric convencional se quita");
-        assert_eq!(
-            total.precision,
-            Some(18),
-            "precision de decimal se conserva"
-        );
+        assert_eq!(total.store_type, None, "conventional numeric is dropped");
+        assert_eq!(total.precision, Some(18), "decimal precision is kept");
         assert_eq!(total.scale, Some(2));
         let meta = t.column("Meta").unwrap();
-        assert_eq!(
-            meta.store_type.as_deref(),
-            Some("jsonb"),
-            "exótico se conserva"
-        );
+        assert_eq!(meta.store_type.as_deref(), Some("jsonb"), "exotic is kept");
     }
 
-    /// Round-trip real: crea una tabla en SQLite con el provider, la lee con el
-    /// reader y genera C#. Ejercita providers + reader + codegen juntos.
+    /// Real round-trip: creates a table in SQLite with the provider, reads it with
+    /// the reader and generates C#. Exercises providers + reader + codegen together.
     #[tokio::test]
     async fn round_trip_sqlite() {
         let path = std::env::temp_dir().join(format!("molde_scaffold_{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let url = format!("sqlite://{}?mode=rwc", path.display());
 
-        // 1. Crear esquema con el provider de SQLite.
+        // 1. Create the schema with the SQLite provider.
         let table = Table {
             name: "Customer".into(),
             schema: None,
@@ -250,15 +242,15 @@ mod tests {
             .unwrap();
         pool.close().await;
 
-        // 2. Leer el modelo de vuelta.
+        // 2. Read the model back.
         let model = reader::read_model(&url, Provider::Sqlite, None)
             .await
             .unwrap();
-        let customer = model.table(None, "Customer").expect("tabla Customer");
+        let customer = model.table(None, "Customer").expect("Customer table");
         assert_eq!(customer.columns.len(), 3);
         assert!(
             customer.column("Id").unwrap().is_identity,
-            "Id debe ser identidad"
+            "Id must be identity"
         );
         assert!(!customer.column("Name").unwrap().is_nullable);
         assert!(customer.column("Email").unwrap().is_nullable);
@@ -267,10 +259,10 @@ mod tests {
             .indexes
             .iter()
             .find(|i| i.name == "IX_Customer_Email")
-            .expect("índice leído");
+            .expect("index read");
         assert!(idx.is_unique);
 
-        // 3. Emitir `.model` (canonizado) y comprobar la salida molde.
+        // 3. Emit `.model` (canonicalized) and check the molde output.
         let mut canon = model.clone();
         canonicalize_for_models(&mut canon);
         let files = molde_lang::emit_project(&canon);
@@ -279,17 +271,17 @@ mod tests {
             .find(|f| f.name == "Customer.model")
             .unwrap()
             .contents;
-        assert!(entity.contains("Id: long")); // INTEGER → long en SQLite
+        assert!(entity.contains("Id: long")); // INTEGER → long in SQLite
         assert!(entity.contains("Name: string"));
         assert!(entity.contains("Email: string? unique"));
 
         let _ = std::fs::remove_file(&path);
     }
 
-    /// Rebuild real en SQLite: un cambio de tipo de columna sobre una tabla con
-    /// datos se aplica vía RebuildTable preservando las filas.
+    /// Real rebuild in SQLite: a column type change on a table with data is
+    /// applied via RebuildTable while preserving the rows.
     #[tokio::test]
-    async fn sqlite_rebuild_preserva_datos() {
+    async fn sqlite_rebuild_preserves_data() {
         use molde_core::diff::diff;
         use molde_core::model::DatabaseModel;
         use sqlx::Row;
@@ -329,7 +321,7 @@ mod tests {
             .unwrap();
         let gen = molde_providers::SqliteGenerator::new();
 
-        // Crear la tabla vieja + una fila.
+        // Create the old table + one row.
         for stmt in gen
             .emit(&Operation::CreateTable {
                 table: old.tables[0].clone(),
@@ -343,7 +335,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Aplicar el diff (incluye RebuildTable).
+        // Apply the diff (includes RebuildTable).
         let ops = diff(&old, &new);
         assert!(ops
             .iter()
@@ -352,16 +344,16 @@ mod tests {
             sqlx::query(&stmt).execute(&pool).await.unwrap();
         }
 
-        // La fila sobrevive a la reconstrucción.
+        // The row survives the rebuild.
         let row = sqlx::query("SELECT COUNT(*) AS n FROM \"Person\";")
             .fetch_one(&pool)
             .await
             .unwrap();
         let n: i64 = row.try_get("n").unwrap();
-        assert_eq!(n, 1, "la fila debe sobrevivir al rebuild");
+        assert_eq!(n, 1, "the row must survive the rebuild");
         pool.close().await;
 
-        // El modelo releído tiene la tabla reconstruida con 2 columnas.
+        // The re-read model has the rebuilt table with 2 columns.
         let model = reader::read_model(&url, Provider::Sqlite, None)
             .await
             .unwrap();

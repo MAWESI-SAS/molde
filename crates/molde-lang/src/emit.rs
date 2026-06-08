@@ -1,4 +1,4 @@
-//! Emitter: `DatabaseModel`/`Table` → texto `.model` en forma canónica.
+//! Emitter: `DatabaseModel`/`Table` → `.model` text in canonical form.
 
 use std::fmt::Write;
 
@@ -11,8 +11,8 @@ use crate::types::clr_to_logical;
 use crate::value::{emit_value, quote_scalar};
 use crate::ModelFile;
 
-/// Emite el proyecto completo: `database.model` (si hay globales) + un archivo
-/// por tabla.
+/// Emits the full project: `database.model` (if there are globals) + one file
+/// per table.
 pub fn emit_project(model: &DatabaseModel) -> Vec<ModelFile> {
     let mut files = Vec::new();
     let db = emit_database(model);
@@ -31,7 +31,7 @@ pub fn emit_project(model: &DatabaseModel) -> Vec<ModelFile> {
     files
 }
 
-/// Emite el archivo global `database.model`.
+/// Emits the global `database.model` file.
 pub fn emit_database(model: &DatabaseModel) -> String {
     let mut s = String::new();
     if let Some(sc) = &model.default_schema {
@@ -65,7 +65,7 @@ pub fn emit_database(model: &DatabaseModel) -> String {
     s
 }
 
-/// Emite un archivo de entidad en forma canónica.
+/// Emits an entity file in canonical form.
 pub fn emit_entity(t: &Table, _model: &DatabaseModel) -> String {
     let mut s = String::new();
     let _ = writeln!(s, "{}", t.name);
@@ -79,7 +79,7 @@ pub fn emit_entity(t: &Table, _model: &DatabaseModel) -> String {
         let _ = writeln!(s, "  comment: {}", quote_scalar(c));
     }
 
-    // Índices únicos de una sola columna con nombre convencional → faceta `unique`.
+    // Single-column unique indexes with a conventional name → `unique` facet.
     let inline_unique: Vec<&str> = t
         .indexes
         .iter()
@@ -87,7 +87,7 @@ pub fn emit_entity(t: &Table, _model: &DatabaseModel) -> String {
         .filter_map(|ix| ix.columns.first().map(String::as_str))
         .collect();
 
-    // PK simple en línea.
+    // Inline single PK.
     let pk_single = t
         .primary_key
         .as_ref()
@@ -101,7 +101,7 @@ pub fn emit_entity(t: &Table, _model: &DatabaseModel) -> String {
         let _ = writeln!(s, "    {}", emit_field(t, col, pk, uniq));
     }
 
-    // PK compuesta o no representada en línea → bloque `key:`.
+    // Composite PK or one not represented inline → `key:` block.
     if let Some(pk) = &t.primary_key {
         if pk.columns.len() > 1 {
             let cols = pk.columns.join(", ");
@@ -153,7 +153,7 @@ pub fn emit_entity(t: &Table, _model: &DatabaseModel) -> String {
     s
 }
 
-/// ¿El índice se representa como faceta `unique` en su columna?
+/// Is the index represented as a `unique` facet on its column?
 fn is_inline_unique(t: &Table, ix: &Index) -> bool {
     ix.is_unique
         && ix.columns.len() == 1
@@ -259,11 +259,11 @@ fn emit_fk(t: &Table, fk: &ForeignKey) -> String {
         format!("{principal}.[{}]", fk.principal_columns.join(", "))
     };
     parts.push(format!("references: {refs}"));
-    // onDelete (solo si no es el valor por defecto)
+    // onDelete (only if it is not the default value)
     if fk.on_delete != ReferentialAction::NoAction {
         parts.push(format!("onDelete: {}", action_name(fk.on_delete)));
     }
-    // name (solo si no es convencional)
+    // name (only if it is not conventional)
     if fk.name != format!("FK_{}_{}", t.name, fk.principal_table) {
         parts.push(format!("name: {}", quote_scalar(&fk.name)));
     }
@@ -304,7 +304,7 @@ fn emit_trigger(s: &mut String, tg: &Trigger) {
     emit_block(s, &tg.definition, 10);
 }
 
-/// Emite texto multilínea indentado a `indent` espacios (block scalar `|`).
+/// Emits multi-line text indented to `indent` spaces (block scalar `|`).
 fn emit_block(s: &mut String, text: &str, indent: usize) {
     let pad = " ".repeat(indent);
     for line in text.lines() {

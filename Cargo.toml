@@ -24,9 +24,9 @@ repository = ""
 molde-core = { path = "crates/molde-core" }
 molde-providers = { path = "crates/molde-providers" }
 molde-lang = { path = "crates/molde-lang" }
-# default-features=false para que el binario (molde-cli) elija el backend TLS
-# de sqlx vía sus propias features (tls-rustls por defecto / tls-native-tls).
-# Los tests de cada crate igual activan su default al construirse como target.
+# default-features=false so the binary (molde-cli) picks sqlx's TLS backend via
+# its own features (tls-rustls by default / tls-native-tls).
+# Each crate's tests still enable their default when built as a target.
 molde-migrate = { path = "crates/molde-migrate", default-features = false }
 molde-scaffold = { path = "crates/molde-scaffold", default-features = false }
 molde-design = { path = "crates/molde-design" }
@@ -40,8 +40,8 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-# El backend TLS NO se fija aquí: lo eligen las features de los crates hoja
-# (tls-rustls por defecto; tls-native-tls para servidores con certificados
-# legacy que rustls rechaza). Ver crates/molde-cli/Cargo.toml.
+# The TLS backend is NOT pinned here: it is chosen by the leaf crates' features
+# (tls-rustls by default; tls-native-tls for servers with legacy certificates
+# that rustls rejects). See crates/molde-cli/Cargo.toml.
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "any", "postgres", "sqlite", "mysql"] }
 time = { version = "0.3" }

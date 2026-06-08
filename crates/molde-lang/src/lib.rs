@@ -1,17 +1,17 @@
-//! # molde-lang — molde, el lenguaje de modelos de molde
+//! # molde-lang — molde, the molde model language
 //!
-//! Parser y emitter entre el texto `.model` (estilo TOON/YAML indentado, una
-//! entidad por archivo) y el IR [`molde_core::model::DatabaseModel`].
+//! Parser and emitter between `.model` text (indented TOON/YAML style, one
+//! entity per file) and the IR [`molde_core::model::DatabaseModel`].
 //!
-//! - [`parse_project`] / [`emit_project`]: proyecto completo (varios archivos).
-//! - [`parse_entity`] / [`emit_entity`]: una tabla.
-//! - [`parse_database`] / [`emit_database`]: el archivo global `database.model`.
+//! - [`parse_project`] / [`emit_project`]: full project (multiple files).
+//! - [`parse_entity`] / [`emit_entity`]: a single table.
+//! - [`parse_database`] / [`emit_database`]: the global `database.model` file.
 //!
-//! Garantía de round-trip: `parse_project(emit_project(ir)) == ir` para todo IR
-//! normalizado. El azúcar de escritura (`owns`, `subtypes`, `enum[…]`) se expande
-//! al parsear; el emitter produce siempre la forma canónica (plana).
+//! Round-trip guarantee: `parse_project(emit_project(ir)) == ir` for every
+//! normalized IR. The authoring sugar (`owns`, `subtypes`, `enum[…]`) is expanded
+//! when parsing; the emitter always produces the canonical (flat) form.
 //!
-//! Especificación: `docs/molde-language-spec.md`.
+//! Specification: `docs/molde-language-spec.md`.
 
 mod emit;
 mod error;
@@ -28,7 +28,7 @@ pub use fmt::{format_model, DATABASE_FILE};
 pub use outline::{outline, OutlineItem};
 pub use parse::{parse_database, parse_entity, parse_project, DbGlobals};
 
-/// Un archivo del proyecto de modelos: nombre relativo + contenido.
+/// A file of the models project: relative name + contents.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelFile {
     pub name: String,

@@ -1,13 +1,13 @@
 //! # molde-core
 //!
-//! Núcleo agnóstico de proveedor de molde:
-//! - [`model`]: la Representación Intermedia (Model IR) del modelo relacional.
-//! - [`snapshot`]: carga/guardado del snapshot (estado del último migrado).
-//! - [`diff`]: cálculo de operaciones de migración entre dos modelos.
+//! Provider-agnostic core of molde:
+//! - [`model`]: the Intermediate Representation (Model IR) of the relational model.
+//! - [`snapshot`]: loading/saving the snapshot (state of the last migration).
+//! - [`diff`]: computing migration operations between two models.
 //!
-//! No depende de ningún motor de BD ni del runtime .NET. Tanto el sidecar como
-//! el scaffolder producen un [`model::DatabaseModel`]; el resto del sistema
-//! opera sobre él.
+//! It does not depend on any DB engine or the .NET runtime. Both the sidecar and
+//! the scaffolder produce a [`model::DatabaseModel`]; the rest of the system
+//! operates on it.
 
 pub mod diff;
 pub mod migration;

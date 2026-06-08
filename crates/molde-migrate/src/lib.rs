@@ -1,13 +1,13 @@
 //! # molde-migrate
 //!
-//! Runtime de aplicación de migraciones (`molde database update`). Abstrae la
-//! ejecución en un [`Backend`] con dos implementaciones:
+//! Migration application runtime (`molde database update`). Abstracts
+//! execution into a [`Backend`] with two implementations:
 //! - **sqlx `Any`**: Postgres, SQLite, MySQL.
-//! - **tiberius (TDS)**: SQL Server (fuera del driver `Any` de sqlx).
+//! - **tiberius (TDS)**: SQL Server (outside sqlx's `Any` driver).
 //!
-//! Garantiza la tabla `__EFMigrationsHistory`, calcula el plan hacia el objetivo
-//! y aplica cada migración en su propia transacción, renderizando el SQL con el
-//! `SqlGenerator` del provider.
+//! Ensures the `__EFMigrationsHistory` table, computes the plan toward the target
+//! and applies each migration in its own transaction, rendering the SQL with the
+//! provider's `SqlGenerator`.
 
 use molde_core::migration::Migration;
 use molde_providers::{Provider, SqlGenerator};
@@ -22,27 +22,27 @@ type MssqlClient = tiberius::Client<Compat<tokio::net::TcpStream>>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum MigrateError {
-    #[error("error de base de datos: {0}")]
+    #[error("database error: {0}")]
     Db(#[from] sqlx::Error),
-    #[error("error de SQL Server: {0}")]
+    #[error("SQL Server error: {0}")]
     Mssql(#[from] tiberius::error::Error),
-    #[error("error de red conectando a SQL Server: {0}")]
+    #[error("network error connecting to SQL Server: {0}")]
     Io(#[from] std::io::Error),
-    #[error("error generando SQL: {0}")]
+    #[error("error generating SQL: {0}")]
     Provider(#[from] molde_providers::ProviderError),
-    #[error("la migración objetivo '{0}' no existe")]
+    #[error("target migration '{0}' does not exist")]
     TargetNotFound(String),
 }
 
-/// Backend de ejecución: sqlx (Any) o tiberius (SQL Server).
+/// Execution backend: sqlx (Any) or tiberius (SQL Server).
 enum Backend {
     Sqlx(AnyPool),
-    // Boxed: el cliente tiberius es grande; evita inflar la variante Sqlx.
+    // Boxed: the tiberius client is large; avoids bloating the Sqlx variant.
     Mssql(Box<Mutex<MssqlClient>>),
 }
 
 impl Backend {
-    /// Ejecuta sentencias dentro de una transacción (todo o nada).
+    /// Executes statements inside a transaction (all or nothing).
     async fn execute_all(&self, stmts: &[String]) -> Result<(), MigrateError> {
         match self {
             Backend::Sqlx(pool) => {
@@ -67,7 +67,7 @@ impl Backend {
         }
     }
 
-    /// Ejecuta una sola sentencia (sin transacción explícita).
+    /// Executes a single statement (without an explicit transaction).
     async fn execute_one(&self, sql: &str) -> Result<(), MigrateError> {
         match self {
             Backend::Sqlx(pool) => {
@@ -81,7 +81,7 @@ impl Backend {
         }
     }
 
-    /// Devuelve la primera columna (texto) de cada fila.
+    /// Returns the first column (text) of each row.
     async fn fetch_first_col(&self, sql: &str) -> Result<Vec<String>, MigrateError> {
         match self {
             Backend::Sqlx(pool) => {
@@ -108,7 +108,7 @@ impl Backend {
     }
 }
 
-/// Ejecuta una sentencia en SQL Server y consume su resultado.
+/// Executes a statement on SQL Server and consumes its result.
 async fn mssql_run(client: &mut MssqlClient, sql: &str) -> Result<(), MigrateError> {
     client
         .simple_query(sql.to_string())
@@ -118,7 +118,7 @@ async fn mssql_run(client: &mut MssqlClient, sql: &str) -> Result<(), MigrateErr
     Ok(())
 }
 
-/// Resultado de un `update`: qué se aplicó y qué se revirtió, en orden.
+/// Result of an `update`: what was applied and what was reverted, in order.
 #[derive(Debug, Default)]
 pub struct UpdateReport {
     pub applied: Vec<String>,
@@ -131,7 +131,7 @@ impl UpdateReport {
     }
 }
 
-/// Aplica migraciones contra una base de datos.
+/// Applies migrations against a database.
 pub struct Migrator {
     backend: Backend,
     generator: Box<dyn SqlGenerator>,
@@ -139,9 +139,9 @@ pub struct Migrator {
 }
 
 impl Migrator {
-    /// Conecta a la base de datos. Para SQL Server espera una cadena ADO
+    /// Connects to the database. For SQL Server it expects an ADO string
     /// (`Server=...;Database=...;User Id=...;Password=...;TrustServerCertificate=true`);
-    /// para el resto, una URL sqlx.
+    /// for the rest, a sqlx URL.
     pub async fn connect(url: &str, provider: Provider) -> Result<Self, MigrateError> {
         let generator = provider.generator();
         let backend = if matches!(provider, Provider::SqlServer) {
@@ -165,14 +165,14 @@ impl Migrator {
         })
     }
 
-    /// Crea la tabla de historial si no existe (DDL específico del provider).
+    /// Creates the history table if it does not exist (provider-specific DDL).
     pub async fn ensure_history(&self) -> Result<(), MigrateError> {
         self.backend
             .execute_one(&self.generator.create_history_table_sql())
             .await
     }
 
-    /// Devuelve los `MigrationId` ya aplicados, ordenados ascendentemente.
+    /// Returns the already-applied `MigrationId`s, sorted ascending.
     pub async fn applied(&self) -> Result<Vec<String>, MigrateError> {
         let t = self.generator.quote_ident(HISTORY_TABLE);
         let id = self.generator.quote_ident("MigrationId");
@@ -181,7 +181,7 @@ impl Migrator {
             .await
     }
 
-    /// Lleva la base de datos al estado `target` (ver doc del CLI).
+    /// Brings the database to the `target` state (see CLI docs).
     pub async fn update(
         &self,
         migrations: &[Migration],
@@ -212,7 +212,7 @@ impl Migrator {
 
         for m in ordered.iter().rev() {
             if m.id.as_str() > target_id.as_str() && applied_set.contains(m.id.as_str()) {
-                tracing::info!("revirtiendo {}", m.id);
+                tracing::info!("reverting {}", m.id);
                 self.revert_one(m).await?;
                 report.reverted.push(m.id.clone());
             }
@@ -220,7 +220,7 @@ impl Migrator {
 
         for m in ordered.iter() {
             if m.id.as_str() <= target_id.as_str() && !applied_set.contains(m.id.as_str()) {
-                tracing::info!("aplicando {}", m.id);
+                tracing::info!("applying {}", m.id);
                 self.apply_one(m).await?;
                 report.applied.push(m.id.clone());
             }
@@ -254,7 +254,7 @@ impl Migrator {
     }
 }
 
-/// Escapa comillas simples para inyectar valores de control de forma segura.
+/// Escapes single quotes to inject control values safely.
 fn escape_literal(s: &str) -> String {
     s.replace('\'', "''")
 }
@@ -315,14 +315,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn aplicar_revertir_e_idempotencia_sqlite() {
+    async fn apply_revert_and_idempotency_sqlite() {
         let path = std::env::temp_dir().join(format!("molde_test_{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let url = format!("sqlite://{}?mode=rwc", path.display());
 
         let migrator = Migrator::connect(&url, Provider::Sqlite)
             .await
-            .expect("conexión sqlite");
+            .expect("sqlite connection");
         let migs = vec![initial_create()];
 
         let r = migrator.update(&migs, None).await.unwrap();
@@ -331,7 +331,7 @@ mod tests {
         assert_eq!(migrator.applied().await.unwrap().len(), 1);
 
         let r2 = migrator.update(&migs, None).await.unwrap();
-        assert!(r2.is_empty(), "segunda corrida debe ser no-op");
+        assert!(r2.is_empty(), "second run must be a no-op");
 
         let r3 = migrator.update(&migs, Some("0")).await.unwrap();
         assert_eq!(r3.reverted.len(), 1);

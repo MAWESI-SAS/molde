@@ -1,13 +1,13 @@
-//! Índice del workspace: mapea cada nombre de tabla a su archivo `.model` y sus
-//! columnas, para resolver navegación (go-to-definition) y dependencias
-//! (find-references) entre entidades.
+//! Workspace index: maps each table name to its `.model` file and its columns,
+//! to resolve navigation (go-to-definition) and dependencies (find-references)
+//! between entities.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use tower_lsp::lsp_types::Url;
 
-/// Información de una entidad indexada.
+/// Information about an indexed entity.
 #[derive(Debug, Clone)]
 pub struct EntityInfo {
     pub table: String,
@@ -15,15 +15,15 @@ pub struct EntityInfo {
     pub columns: Vec<String>,
 }
 
-/// Índice de todo el directorio de modelos.
+/// Index of the entire models directory.
 #[derive(Debug, Default)]
 pub struct Index {
-    /// Clave: nombre de tabla y, como alias, el stem del archivo.
+    /// Key: table name and, as an alias, the file stem.
     by_table: HashMap<String, EntityInfo>,
 }
 
 impl Index {
-    /// Reconstruye el índice escaneando `root` en busca de archivos `.model`.
+    /// Rebuilds the index by scanning `root` for `.model` files.
     pub fn build(root: &Path) -> Self {
         let mut idx = Index::default();
         for path in model_paths(root) {
@@ -43,7 +43,7 @@ impl Index {
                     path: path.clone(),
                     columns: table.columns.iter().map(|c| c.name.clone()).collect(),
                 };
-                // Indexar por nombre de tabla y por stem del archivo (alias).
+                // Index by table name and by file stem (alias).
                 if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                     idx.by_table.entry(stem.to_string()).or_insert(info.clone());
                 }
@@ -57,7 +57,7 @@ impl Index {
         self.by_table.get(table)
     }
 
-    /// Nombres de tabla conocidos (sin duplicar alias de stem que coincidan).
+    /// Known table names (without duplicating matching stem aliases).
     pub fn table_names(&self) -> Vec<String> {
         let mut names: Vec<String> = self
             .by_table
@@ -72,20 +72,20 @@ impl Index {
     }
 }
 
-/// `Url` de archivo a partir de una ruta del filesystem.
+/// File `Url` from a filesystem path.
 pub fn path_to_uri(path: &Path) -> Option<Url> {
     Url::from_file_path(path).ok()
 }
 
-/// Todos los archivos `.model` bajo `root` (recursivo, profundidad acotada).
+/// All `.model` files under `root` (recursive, bounded depth).
 pub fn model_paths(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     collect(root, &mut out, 0);
     out
 }
 
-/// Recolecta archivos `.model` bajo `root` recursivamente (profundidad acotada),
-/// saltando directorios de build/control de versiones.
+/// Collects `.model` files under `root` recursively (bounded depth), skipping
+/// build/version-control directories.
 fn collect(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
     if depth > 16 {
         return;

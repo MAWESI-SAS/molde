@@ -1,14 +1,14 @@
-//! Formato en disco de las migraciones.
+//! On-disk format of migrations.
 //!
-//! Una migración es un JSON que guarda la lista de [`Operation`] (el IR) para
-//! `up` y `down`. El SQL **no** se almacena: se renderiza al aplicar, con el
-//! `SqlGenerator` del provider elegido. Así una misma migración sirve para
-//! distintos motores (Postgres, SQLite, …).
+//! A migration is a JSON that stores the list of [`Operation`] (the IR) for
+//! `up` and `down`. The SQL is **not** stored: it is rendered when applied, with the
+//! `SqlGenerator` of the chosen provider. This way a single migration works for
+//! different engines (Postgres, SQLite, …).
 //!
-//! Convención de nombre de archivo: `<id>.json`, donde `id` sigue el estilo de
-//! EF: `<timestamp UTC yyyyMMddHHmmss>_<Nombre>` (p. ej.
-//! `20260607120000_InitialCreate`). El orden lexicográfico del `id` coincide con
-//! el orden cronológico de aplicación.
+//! File naming convention: `<id>.json`, where `id` follows EF's style:
+//! `<UTC timestamp yyyyMMddHHmmss>_<Name>` (e.g.
+//! `20260607120000_InitialCreate`). The lexicographic order of `id` matches the
+//! chronological order of application.
 
 use std::path::{Path, PathBuf};
 
@@ -16,16 +16,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::diff::Operation;
 
-/// Versión del formato de migración. Se incrementa ante cambios incompatibles.
+/// Migration format version. It is bumped on incompatible changes.
 pub const MIGRATION_FORMAT_VERSION: u32 = 1;
 
-/// Una migración: operaciones para avanzar (`up`) y revertir (`down`).
+/// A migration: operations to move forward (`up`) and to revert (`down`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Migration {
     pub format_version: u32,
-    /// Identificador único, también la PK en `__EFMigrationsHistory`.
+    /// Unique identifier, also the PK in `__EFMigrationsHistory`.
     pub id: String,
-    /// Nombre legible (la parte tras el timestamp).
+    /// Readable name (the part after the timestamp).
     pub name: String,
     #[serde(default)]
     pub up: Vec<Operation>,
@@ -52,20 +52,22 @@ impl Migration {
 
 #[derive(Debug, thiserror::Error)]
 pub enum MigrationError {
-    #[error("error de E/S sobre migraciones: {0}")]
+    #[error("I/O error on migrations: {0}")]
     Io(#[from] std::io::Error),
-    #[error("error (de)serializando la migración '{path}': {source}")]
+    #[error("error (de)serializing the migration '{path}': {source}")]
     Serde {
         path: String,
         source: serde_json::Error,
     },
-    #[error("versión de formato no soportada en '{path}': {found} (esperada <= {MIGRATION_FORMAT_VERSION})")]
+    #[error(
+        "unsupported format version in '{path}': {found} (expected <= {MIGRATION_FORMAT_VERSION})"
+    )]
     UnsupportedFormat { path: String, found: u32 },
 }
 
-/// Carga todas las migraciones (`*.json`) de un directorio, ordenadas por `id`.
-/// Si el directorio no existe, devuelve una lista vacía (aún no se ha creado
-/// ninguna migración).
+/// Loads all migrations (`*.json`) from a directory, ordered by `id`.
+/// If the directory does not exist, returns an empty list (no migration has been
+/// created yet).
 pub fn load_dir(dir: impl AsRef<Path>) -> Result<Vec<Migration>, MigrationError> {
     let dir = dir.as_ref();
     let mut migrations = Vec::new();
@@ -78,8 +80,8 @@ pub fn load_dir(dir: impl AsRef<Path>) -> Result<Vec<Migration>, MigrationError>
         if path.extension().and_then(|s| s.to_str()) != Some("json") {
             continue;
         }
-        // Las migraciones se llaman `<timestamp>_<nombre>.json` (empiezan con
-        // dígito). Se ignora cualquier otro `.json` del directorio, como el
+        // Migrations are named `<timestamp>_<name>.json` (they start with a
+        // digit). Any other `.json` in the directory is ignored, such as the
         // `model-snapshot.json`.
         let starts_with_digit = path
             .file_name()
@@ -109,9 +111,9 @@ pub fn load_dir(dir: impl AsRef<Path>) -> Result<Vec<Migration>, MigrationError>
     Ok(migrations)
 }
 
-/// Reconstruye el modelo reproduciendo las operaciones `up` de una secuencia de
-/// migraciones (ya ordenadas). Lo usa `migrations remove` para regenerar el
-/// snapshot tras eliminar la última migración.
+/// Rebuilds the model by replaying the `up` operations of a sequence of
+/// migrations (already ordered). Used by `migrations remove` to regenerate the
+/// snapshot after removing the last migration.
 pub fn rebuild_model(migrations: &[Migration]) -> crate::DatabaseModel {
     let mut model = crate::DatabaseModel::empty();
     for migration in migrations {
@@ -122,8 +124,8 @@ pub fn rebuild_model(migrations: &[Migration]) -> crate::DatabaseModel {
     model
 }
 
-/// Persiste una migración como `<dir>/<id>.json`. Devuelve la ruta escrita.
-/// (Lo usará `migrations add` en la Fase 4; aquí da simetría y soporte a tests.)
+/// Persists a migration as `<dir>/<id>.json`. Returns the written path.
+/// (`migrations add` will use it in Phase 4; here it provides symmetry and test support.)
 pub fn save(migration: &Migration, dir: impl AsRef<Path>) -> Result<PathBuf, MigrationError> {
     let dir = dir.as_ref();
     std::fs::create_dir_all(dir)?;

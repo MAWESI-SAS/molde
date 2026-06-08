@@ -1,12 +1,12 @@
-//! Ciclo model-first e2e contra Postgres (ignorado por defecto: requiere BD).
+//! End-to-end model-first cycle against Postgres (ignored by default: requires a DB).
 //!
-//! Parte de archivos `.model` escritos a mano (el lenguaje molde), los parsea a IR
-//! con `molde-lang`, deriva las operaciones con `diff(empty, ir)`, las aplica al
-//! destino vía `PostgresGenerator`, vuelve a leer el esquema real y verifica que
-//! es equivalente al modelo declarado. Cierra el lazo `.model` → migración → apply
-//! 100% en Rust, sin .NET.
+//! Starts from hand-written `.model` files (the molde language), parses them to IR
+//! with `molde-lang`, derives the operations with `diff(empty, ir)`, applies them to
+//! the target via `PostgresGenerator`, reads the real schema back and verifies that
+//! it is equivalent to the declared model. Closes the loop `.model` → migration → apply
+//! 100% in Rust, without .NET.
 //!
-//! Ejecutar:
+//! Run:
 //! ```text
 //! DST_DATABASE_URL=postgres://… \
 //!   cargo test -p molde-scaffold --test model_first_postgres -- --ignored --nocapture
@@ -41,8 +41,8 @@ Order:
 ";
 
 #[tokio::test]
-#[ignore = "requiere DST_DATABASE_URL (Postgres)"]
-async fn ciclo_model_first_postgres() {
+#[ignore = "requires DST_DATABASE_URL (Postgres)"]
+async fn model_first_cycle_postgres() {
     let dst = std::env::var("DST_DATABASE_URL").expect("DST_DATABASE_URL");
 
     // 1. `.model` (molde) → IR.
@@ -51,23 +51,23 @@ async fn ciclo_model_first_postgres() {
         ("Customer.model", CUSTOMER_MODEL),
         ("Order.model", ORDER_MODEL),
     ];
-    let mut model = molde_lang::parse_project(&files).expect("parseando .model");
+    let mut model = molde_lang::parse_project(&files).expect("parsing .model");
     model.normalize();
 
-    // 2. Aplicar al destino: operaciones del diff contra un esquema vacío.
+    // 2. Apply to the target: diff operations against an empty schema.
     install_default_drivers();
     let pool = AnyPoolOptions::new()
         .max_connections(1)
         .connect(&dst)
         .await
-        .expect("conectando DST");
+        .expect("connecting to DST");
 
-    // Slate limpio: el test debe poder re-ejecutarse contra la misma BD.
+    // Clean slate: the test must be re-runnable against the same DB.
     for stmt in ["DROP SCHEMA public CASCADE", "CREATE SCHEMA public"] {
         sqlx::query(stmt)
             .execute(&pool)
             .await
-            .unwrap_or_else(|e| panic!("reseteando schema:\n{stmt}\nerror: {e}"));
+            .unwrap_or_else(|e| panic!("resetting schema:\n{stmt}\nerror: {e}"));
     }
 
     let ops = diff(&DatabaseModel::empty(), &model);
@@ -77,38 +77,38 @@ async fn ciclo_model_first_postgres() {
             sqlx::query(&stmt)
                 .execute(&pool)
                 .await
-                .unwrap_or_else(|e| panic!("aplicando:\n{stmt}\nerror: {e}"));
+                .unwrap_or_else(|e| panic!("applying:\n{stmt}\nerror: {e}"));
         }
     }
 
-    // 3. Releer el esquema real y canonicalizarlo a la forma lógica (igual que el
-    //    scaffold): así los tipos del motor (`integer`, `text`, `varchar(200)`…)
-    //    vuelven a tipos lógicos y la comparación es contra el `.model` declarado.
+    // 3. Read the real schema back and canonicalize it to the logical form (like the
+    //    scaffold): this way the engine types (`integer`, `text`, `varchar(200)`…)
+    //    map back to logical types and the comparison is against the declared `.model`.
     let mut back = molde_scaffold::reader::read_model(&dst, Provider::Postgres, Some("public"))
         .await
-        .expect("releyendo DST");
+        .expect("reading DST back");
     back.normalize();
     molde_scaffold::canonicalize_for_models(&mut back);
     back.normalize();
 
     let declared = table(&model, "Customer");
     let actual = table(&back, "Customer");
-    assert_eq!(declared.columns, actual.columns, "columnas de Customer");
+    assert_eq!(declared.columns, actual.columns, "Customer columns");
     assert_eq!(
         declared.primary_key, actual.primary_key,
-        "PK identity de Customer"
+        "Customer identity PK"
     );
     assert!(
         actual.indexes.iter().any(|ix| ix.is_unique),
-        "índice único de Customer.Email"
+        "Customer.Email unique index"
     );
 
     let dorder = table(&model, "Order");
     let aorder = table(&back, "Order");
-    assert_eq!(dorder.columns, aorder.columns, "columnas de Order");
+    assert_eq!(dorder.columns, aorder.columns, "Order columns");
     assert_eq!(
         dorder.foreign_keys, aorder.foreign_keys,
-        "FK cascade de Order → Customer"
+        "Order → Customer cascade FK"
     );
 }
 
@@ -116,5 +116,5 @@ fn table<'a>(m: &'a DatabaseModel, name: &str) -> &'a molde_core::model::Table {
     m.tables
         .iter()
         .find(|t| t.name == name)
-        .unwrap_or_else(|| panic!("tabla '{name}' ausente"))
+        .unwrap_or_else(|| panic!("table '{name}' missing"))
 }

@@ -1,9 +1,9 @@
-//! molde-lsp — language server del lenguaje de modelos molde (`.model`).
+//! molde-lsp — language server for the molde model language (`.model`).
 //!
-//! Reutiliza `molde-lang` para parsear/formatear/inspeccionar. Provee:
-//! diagnostics (errores de parseo inline), document symbols (outline),
-//! go-to-definition (FK `references:` → entidad), find-references (dependencias),
-//! hover, completion de nombres de tabla y formateo canónico.
+//! Reuses `molde-lang` to parse/format/inspect. Provides:
+//! diagnostics (inline parse errors), document symbols (outline),
+//! go-to-definition (FK `references:` → entity), find-references (dependencies),
+//! hover, table-name completion, and canonical formatting.
 
 use std::path::PathBuf;
 use std::sync::RwLock;
@@ -20,11 +20,11 @@ use index::Index;
 
 struct Backend {
     client: Client,
-    /// Documentos abiertos (sincronización FULL): uri → contenido.
+    /// Open documents (FULL sync): uri → content.
     docs: DashMap<Url, String>,
-    /// Raíz del workspace.
+    /// Workspace root.
     root: RwLock<Option<PathBuf>>,
-    /// Índice de entidades del workspace.
+    /// Workspace entity index.
     index: RwLock<Index>,
 }
 
@@ -46,7 +46,7 @@ impl Backend {
         }
     }
 
-    /// Reparsea un documento y publica diagnósticos (vacío si parsea bien).
+    /// Re-parses a document and publishes diagnostics (empty if it parses fine).
     async fn validate(&self, uri: Url) {
         let Some(text) = self.docs.get(&uri).map(|t| t.clone()) else {
             return;
@@ -63,7 +63,7 @@ impl Backend {
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
-        // Raíz: root_uri (deprecado) o el primer workspace folder.
+        // Root: root_uri (deprecated) or the first workspace folder.
         let root = params
             .root_uri
             .and_then(|u| u.to_file_path().ok())
@@ -105,7 +105,7 @@ impl LanguageServer for Backend {
         self.client
             .log_message(
                 MessageType::INFO,
-                format!("molde-lsp: {n} entidades indexadas"),
+                format!("molde-lsp: {n} entities indexed"),
             )
             .await;
     }
@@ -121,7 +121,7 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        // Sincronización FULL: el último cambio trae el documento completo.
+        // FULL sync: the last change carries the complete document.
         if let Some(change) = params.content_changes.into_iter().last() {
             self.docs
                 .insert(params.text_document.uri.clone(), change.text);
@@ -130,7 +130,7 @@ impl LanguageServer for Backend {
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
-        // Al guardar, reindexar el workspace (pudieron cambiar tablas/columnas).
+        // On save, reindex the workspace (tables/columns may have changed).
         self.rebuild_index();
         self.validate(params.text_document.uri).await;
     }
@@ -168,7 +168,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let line_text = text::nth_line(&content, pos.line as usize);
-        // Solo navegamos sobre líneas de FK (`... references: Tabla.col ...`).
+        // We only navigate on FK lines (`... references: Table.col ...`).
         let Some(target) = text::references_target(line_text) else {
             return Ok(None);
         };
@@ -179,7 +179,7 @@ impl LanguageServer for Backend {
         let Some(target_uri) = index::path_to_uri(&info.path) else {
             return Ok(None);
         };
-        // Saltamos a la cabecera de la entidad (línea 0).
+        // We jump to the entity header (line 0).
         let range = Range::new(Position::new(0, 0), Position::new(0, 0));
         Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
             target_uri, range,
@@ -198,7 +198,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        // Recorrer todo el workspace buscando FKs que apunten a `target`.
+        // Walk the entire workspace looking for FKs that point to `target`.
         let root = self.root.read().unwrap().clone();
         let Some(root) = root else {
             return Ok(None);
@@ -237,7 +237,7 @@ impl LanguageServer for Backend {
         let idx = self.index.read().unwrap();
         let markdown = if let Some(info) = idx.get(&word) {
             format!(
-                "**entidad** `{}` — {} columna(s)\n\n_{}_",
+                "**entity** `{}` — {} column(s)\n\n_{}_",
                 info.table,
                 info.columns.len(),
                 info.path
@@ -264,7 +264,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let line_text = text::nth_line(&content, pos.line as usize);
-        // Completar nombres de tabla dentro de un `references:`.
+        // Complete table names inside a `references:`.
         if !line_text.contains("references:") {
             return Ok(None);
         }
@@ -288,7 +288,7 @@ impl LanguageServer for Backend {
         };
         let name = text::uri_file_name(&uri);
         let Ok(formatted) = molde_lang::format_model(&name, &content) else {
-            return Ok(None); // documento con error de parseo: no formatear
+            return Ok(None); // document with a parse error: do not format
         };
         if formatted == content {
             return Ok(None);

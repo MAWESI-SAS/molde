@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Se ejecuta una vez tras crear el contenedor. Deja el entorno listo para
-# compilar y probar el workspace de Rust.
+# Runs once after the container is created. Leaves the environment ready to
+# build and test the Rust workspace.
 set -euo pipefail
 
-echo "==> Versiones de toolchain"
+echo "==> Toolchain versions"
 rustc --version
 cargo --version
 
-echo "==> Descargando dependencias de Rust (cargo fetch)"
+echo "==> Downloading Rust dependencies (cargo fetch)"
 cargo fetch
 
-echo "==> Listo. Comandos útiles:"
+echo "==> Ready. Useful commands:"
 echo "    cargo build && cargo test"
-echo "    molde scaffold --connection \"\$DATABASE_URL\"   # BD -> models/*.model"
-echo "    molde migrations add InitialCreate              # models/ -> migrations/"
-echo "    molde database update --connection \"\$DATABASE_URL\""
-echo "    psql \"\$DATABASE_URL\"   # Postgres local (servicio db)"
+echo "    molde pull --connection \"\$DATABASE_URL\"     # database -> models/*.model"
+echo "    molde migrate InitialCreate                    # models/ -> migrations/"
+echo "    molde apply --connection \"\$DATABASE_URL\"     # apply migrations"
+echo "    psql \"\$DATABASE_URL\"   # local Postgres (db service)"

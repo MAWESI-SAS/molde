@@ -1,12 +1,12 @@
-//! Provider de SQL Server (generación de T-SQL).
+//! SQL Server provider (T-SQL generation).
 //!
-//! Genera DDL en dialecto T-SQL: citado con `[ ]`, `IDENTITY(1,1)`, tipos
-//! `nvarchar`/`datetime2`/`uniqueidentifier`, `ALTER TABLE ... ADD` (sin COLUMN),
+//! Generates DDL in the T-SQL dialect: quoting with `[ ]`, `IDENTITY(1,1)`, types
+//! `nvarchar`/`datetime2`/`uniqueidentifier`, `ALTER TABLE ... ADD` (without COLUMN),
 //! `DROP INDEX ... ON`.
 //!
-//! Nota: la **aplicación** a SQL Server requiere un driver TDS (p. ej. `tiberius`),
-//! fuera del driver `Any` de sqlx; aún no está cableada en el CLI. La generación
-//! de T-SQL sí está disponible y testeada.
+//! Note: **applying** to SQL Server requires a TDS driver (e.g. `tiberius`),
+//! outside sqlx's `Any` driver; it is not wired into the CLI yet. T-SQL
+//! generation is available and tested.
 
 use molde_core::diff::Operation;
 use molde_core::model::{Column, ForeignKey, Index, ReferentialAction, Table};
@@ -18,7 +18,7 @@ fn on_delete_clause(action: ReferentialAction) -> &'static str {
         ReferentialAction::Cascade => " ON DELETE CASCADE",
         ReferentialAction::SetNull => " ON DELETE SET NULL",
         ReferentialAction::SetDefault => " ON DELETE SET DEFAULT",
-        // SQL Server no tiene RESTRICT; NO ACTION es el equivalente.
+        // SQL Server has no RESTRICT; NO ACTION is the equivalent.
         ReferentialAction::Restrict | ReferentialAction::NoAction => "",
     }
 }
@@ -39,8 +39,8 @@ impl SqlServerGenerator {
 
     fn column_def(&self, column: &Column) -> Result<String, ProviderError> {
         let mut parts = vec![self.quote_ident(&column.name)];
-        // Columna computada: `[col] AS (expr) [PERSISTED [NOT NULL]]`. No lleva
-        // tipo, IDENTITY ni DEFAULT. La expresión ya viene parentizada por
+        // Computed column: `[col] AS (expr) [PERSISTED [NOT NULL]]`. It carries no
+        // type, IDENTITY, or DEFAULT. The expression already comes parenthesized by
         // sys.computed_columns.definition.
         if let Some(expr) = &column.computed_sql {
             parts.push(format!("AS {expr}"));
@@ -143,7 +143,7 @@ impl SqlGenerator for SqlServerGenerator {
     }
 
     fn create_history_table_sql(&self) -> String {
-        // SQL Server no soporta CREATE TABLE IF NOT EXISTS.
+        // SQL Server does not support CREATE TABLE IF NOT EXISTS.
         "IF OBJECT_ID(N'__EFMigrationsHistory') IS NULL \
          CREATE TABLE [__EFMigrationsHistory] (\
          [MigrationId] varchar(150) NOT NULL \

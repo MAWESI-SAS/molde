@@ -1,12 +1,12 @@
-//! Léxico de bajo nivel: tokenización que respeta comillas y delimitadores, y
-//! parseo de valores inline (`[..]`, `{..}`, escalares, `~`=null).
+//! Low-level lexing: tokenization that respects quotes and delimiters, and
+//! parsing of inline values (`[..]`, `{..}`, scalars, `~`=null).
 
 use serde_json::Value;
 
 use crate::error::{MoldeError, Result};
 
-/// Divide `s` por el separador `sep` a NIVEL SUPERIOR, ignorando separadores que
-/// aparezcan dentro de comillas dobles o de `[] {} ()`.
+/// Splits `s` by the separator `sep` at the TOP LEVEL, ignoring separators that
+/// appear inside double quotes or `[] {} ()`.
 pub fn split_top_level(s: &str, sep: char) -> Vec<String> {
     let mut out = Vec::new();
     let mut depth = 0i32;
@@ -52,7 +52,7 @@ pub fn split_top_level(s: &str, sep: char) -> Vec<String> {
     out
 }
 
-/// Tokeniza por espacios en blanco respetando comillas y `[] {} ()`.
+/// Tokenizes by whitespace, respecting quotes and `[] {} ()`.
 pub fn tokenize_ws(s: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut depth = 0i32;
@@ -99,7 +99,7 @@ pub fn tokenize_ws(s: &str) -> Vec<String> {
     out
 }
 
-/// Quita las comillas dobles externas de `s` y deshace los escapes `\"` y `\\`.
+/// Removes the outer double quotes from `s` and unescapes `\"` and `\\`.
 pub fn unquote(s: &str) -> String {
     let t = s.trim();
     if t.len() >= 2 && t.starts_with('"') && t.ends_with('"') {
@@ -127,7 +127,7 @@ pub fn unquote(s: &str) -> String {
     }
 }
 
-/// Indica si un escalar necesita comillas al emitirse.
+/// Indicates whether a scalar needs quotes when emitted.
 pub fn needs_quote(s: &str) -> bool {
     if s.is_empty() {
         return true;
@@ -140,7 +140,7 @@ pub fn needs_quote(s: &str) -> bool {
     })
 }
 
-/// Emite un escalar, citándolo si hace falta.
+/// Emits a scalar, quoting it if necessary.
 pub fn quote_scalar(s: &str) -> String {
     if needs_quote(s) {
         let esc = s.replace('\\', "\\\\").replace('"', "\\\"");
@@ -150,8 +150,8 @@ pub fn quote_scalar(s: &str) -> String {
     }
 }
 
-/// Parsea un valor inline a `serde_json::Value`: listas, objetos, `~`, bool,
-/// número o cadena.
+/// Parses an inline value into `serde_json::Value`: lists, objects, `~`, bool,
+/// number or string.
 pub fn parse_value(s: &str, line: usize) -> Result<Value> {
     let t = s.trim();
     if t.is_empty() {
@@ -183,7 +183,7 @@ pub fn parse_value(s: &str, line: usize) -> Result<Value> {
                 continue;
             }
             let (k, v) = part.split_once(':').ok_or_else(|| {
-                MoldeError::new(line, format!("se esperaba 'clave: valor' en '{part}'"))
+                MoldeError::new(line, format!("expected 'key: value' in '{part}'"))
             })?;
             map.insert(k.trim().to_string(), parse_value(v, line)?);
         }
@@ -203,7 +203,7 @@ pub fn parse_value(s: &str, line: usize) -> Result<Value> {
     Ok(Value::String(t.to_string()))
 }
 
-/// Emite un `serde_json::Value` como literal inline molde.
+/// Emits a `serde_json::Value` as a molde inline literal.
 pub fn emit_value(v: &Value) -> String {
     match v {
         Value::Null => "~".to_string(),

@@ -5,12 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-description = "Runtime de aplicación de migraciones (sqlx + tiberius) para molde"
+description = "Migration application runtime (sqlx + tiberius) for molde"
 
 [features]
 default = ["tls-rustls"]
 tls-rustls = ["sqlx/tls-rustls"]
-# Backend OpenSSL: más tolerante con certificados X.509 v1 (servidores legacy).
+# OpenSSL backend: more tolerant of X.509 v1 certificates (legacy servers).
 tls-native-tls = ["sqlx/tls-native-tls"]
 
 [dependencies]
@@ -20,6 +20,6 @@ sqlx = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true, features = ["net", "sync"] }
-# SQL Server (TDS) — fuera del driver Any de sqlx.
+# SQL Server (TDS) — outside sqlx's Any driver.
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
 tokio-util = { version = "0.7", features = ["compat"] }

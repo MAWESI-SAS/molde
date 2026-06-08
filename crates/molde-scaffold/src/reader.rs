@@ -1,8 +1,8 @@
-//! Lectura del esquema de una base de datos existente → [`DatabaseModel`].
+//! Reading the schema of an existing database → [`DatabaseModel`].
 //!
-//! Específico por motor: SQLite usa `PRAGMA`, PostgreSQL usa `information_schema`.
-//! Produce el mismo IR ([`DatabaseModel`]) que el parser del lenguaje molde, de modo
-//! que el resto del sistema (emisión `.model`, diff) es agnóstico del origen.
+//! Engine-specific: SQLite uses `PRAGMA`, PostgreSQL uses `information_schema`.
+//! Produces the same IR ([`DatabaseModel`]) as the molde language parser, so that
+//! the rest of the system (`.model` emission, diff) is agnostic of the source.
 
 use std::collections::BTreeMap;
 
@@ -18,24 +18,24 @@ type SsClient = tiberius::Client<Compat<tokio::net::TcpStream>>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ReadError {
-    #[error("error de base de datos: {0}")]
+    #[error("database error: {0}")]
     Db(#[from] sqlx::Error),
-    #[error("error de SQL Server: {0}")]
+    #[error("SQL Server error: {0}")]
     Mssql(#[from] tiberius::error::Error),
-    #[error("error de red conectando a SQL Server: {0}")]
+    #[error("network error connecting to SQL Server: {0}")]
     Io(#[from] std::io::Error),
 }
 
-/// Tablas internas que nunca se incluyen en el scaffold.
+/// Internal tables that are never included in the scaffold.
 const SKIP_TABLES: &[&str] = &["__EFMigrationsHistory"];
 
-/// Conecta y lee el modelo completo de la base de datos.
+/// Connects and reads the full database model.
 pub async fn read_model(
     url: &str,
     provider: Provider,
     schema: Option<&str>,
 ) -> Result<DatabaseModel, ReadError> {
-    // SQL Server usa tiberius (fuera del driver Any de sqlx).
+    // SQL Server uses tiberius (outside sqlx's Any driver).
     if matches!(provider, Provider::SqlServer) {
         return read_sqlserver(url, schema.unwrap_or("dbo")).await;
     }
@@ -49,7 +49,7 @@ pub async fn read_model(
         Provider::Sqlite => read_sqlite(&pool).await,
         Provider::Postgres => read_postgres(&pool, schema.unwrap_or("public")).await,
         Provider::MySql => read_mysql(&pool, schema).await,
-        Provider::SqlServer => unreachable!("SQL Server se maneja antes con tiberius"),
+        Provider::SqlServer => unreachable!("SQL Server is handled earlier with tiberius"),
     }
 }
 
@@ -106,7 +106,7 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
         seed_data: Vec::new(),
     };
 
-    // Columnas (PRAGMA table_info: cid, name, type, notnull, dflt_value, pk).
+    // Columns (PRAGMA table_info: cid, name, type, notnull, dflt_value, pk).
     let cols = sqlx::query(&format!("PRAGMA table_info('{}')", escape_literal(name)))
         .fetch_all(pool)
         .await?;
@@ -128,7 +128,7 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
             store_type: (!ctype.is_empty()).then(|| ctype.clone()),
             clr_type: Some(sqlite_clr(&ctype).to_string()),
             is_nullable: notnull == 0,
-            is_identity: false, // se ajusta tras conocer la PK
+            is_identity: false, // adjusted after the PK is known
             max_length: sqlite_max_length(&ctype),
             precision: None,
             scale: None,
@@ -144,7 +144,7 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
         pk_cols.sort_by_key(|(order, _)| *order);
         let columns: Vec<String> = pk_cols.into_iter().map(|(_, c)| c).collect();
 
-        // Heurística de identidad: PK simple sobre columna INTEGER (alias de ROWID).
+        // Identity heuristic: single-column PK over an INTEGER column (ROWID alias).
         if columns.len() == 1 {
             if let Some(col) = table.columns.iter_mut().find(|c| c.name == columns[0]) {
                 let is_int = col
@@ -155,8 +155,8 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
                 col.is_identity = is_int;
             }
         }
-        // Las columnas de la PK son NOT NULL (SQLite reporta notnull=0 para las
-        // PK INTEGER alias de ROWID, así que lo forzamos aquí).
+        // PK columns are NOT NULL (SQLite reports notnull=0 for INTEGER PKs that
+        // are ROWID aliases, so we force it here).
         for pk_col in &columns {
             if let Some(col) = table.columns.iter_mut().find(|c| &c.name == pk_col) {
                 col.is_nullable = false;
@@ -168,7 +168,7 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
         });
     }
 
-    // Claves foráneas (PRAGMA foreign_key_list: id, seq, table, from, to, on_update, on_delete).
+    // Foreign keys (PRAGMA foreign_key_list: id, seq, table, from, to, on_update, on_delete).
     let fk_rows = sqlx::query(&format!(
         "PRAGMA foreign_key_list('{}')",
         escape_literal(name)
@@ -197,7 +197,7 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
     }
     table.foreign_keys = fks.into_values().collect();
 
-    // Índices explícitos (PRAGMA index_list, origin='c' = creado con CREATE INDEX).
+    // Explicit indexes (PRAGMA index_list, origin='c' = created with CREATE INDEX).
     let idx_rows = sqlx::query(&format!("PRAGMA index_list('{}')", escape_literal(name)))
         .fetch_all(pool)
         .await?;
@@ -232,11 +232,11 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
     Ok(table)
 }
 
-/// Mapea un tipo declarado de SQLite a CLR según afinidad (regla de EF Core).
+/// Maps a declared SQLite type to CLR by affinity (EF Core rule).
 fn sqlite_clr(declared: &str) -> &'static str {
     let t = declared.to_ascii_uppercase();
     if t.contains("INT") {
-        "System.Int64" // INTEGER en SQLite es de 64 bits
+        "System.Int64" // INTEGER in SQLite is 64-bit
     } else if t.contains("CHAR") || t.contains("CLOB") || t.contains("TEXT") {
         "System.String"
     } else if t.contains("BLOB") || t.is_empty() {
@@ -244,12 +244,12 @@ fn sqlite_clr(declared: &str) -> &'static str {
     } else if t.contains("REAL") || t.contains("FLOA") || t.contains("DOUB") {
         "System.Double"
     } else {
-        // NUMERIC/DECIMAL/BOOLEAN/DATE… EF los guarda como TEXT → string por defecto.
+        // NUMERIC/DECIMAL/BOOLEAN/DATE… EF stores them as TEXT → string by default.
         "System.String"
     }
 }
 
-/// Extrae `N` de un tipo declarado tipo `varchar(200)`.
+/// Extracts `N` from a declared type like `varchar(200)`.
 fn sqlite_max_length(declared: &str) -> Option<i32> {
     let open = declared.find('(')?;
     let close = declared.find(')')?;
@@ -265,9 +265,9 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
     model.default_schema = Some(schema.to_string());
     let sc = escape_literal(schema);
 
-    // Tablas.
-    // Las columnas de information_schema son de tipo `name`/dominios que el
-    // driver Any de sqlx no decodifica; se castean a text/int explícitamente.
+    // Tables.
+    // information_schema columns are of type `name`/domains that sqlx's Any
+    // driver does not decode; they are cast to text/int explicitly.
     let table_rows = sqlx::query(&format!(
         "SELECT table_name::text AS table_name FROM information_schema.tables \
          WHERE table_schema = '{sc}' AND table_type = 'BASE TABLE' ORDER BY table_name"
@@ -298,9 +298,9 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         );
     }
 
-    // Columnas (todas de una vez, agrupadas por tabla). Se une a pg_attribute
-    // para obtener `format_type` (tipo exacto, p. ej. `vector(384)`) y se leen
-    // las columnas generadas (`GENERATED ALWAYS AS ... STORED`, p. ej. tsvector).
+    // Columns (all at once, grouped by table). Joins pg_attribute to obtain
+    // `format_type` (exact type, e.g. `vector(384)`) and reads the generated
+    // columns (`GENERATED ALWAYS AS ... STORED`, e.g. tsvector).
     let col_rows = sqlx::query(&format!(
         "SELECT c.table_name::text AS table_name, c.column_name::text AS column_name, \
                 c.data_type::text AS data_type, c.udt_name::text AS udt_name, \
@@ -347,7 +347,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
                 .map(|d| d.contains("nextval("))
                 .unwrap_or(false);
 
-        // Columna generada (STORED): se preserva la expresión para round-trip.
+        // Generated column (STORED): the expression is preserved for round-trip.
         let computed = is_generated.eq_ignore_ascii_case("ALWAYS");
         let computed_sql = if computed {
             generation_expression
@@ -355,7 +355,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
             None
         };
 
-        // pgvector pierde la dimensión vía information_schema; usar format_type.
+        // pgvector loses the dimension via information_schema; use format_type.
         let store_type = if udt_name == "vector" {
             full_type.clone()
         } else {
@@ -371,7 +371,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
             max_length,
             precision,
             scale,
-            // Los defaults de identidad/serial no se reproducen como literal.
+            // Identity/serial defaults are not reproduced as a literal.
             default_value_sql: if identity || computed { None } else { default },
             computed_sql,
             computed_stored: computed,
@@ -380,7 +380,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         });
     }
 
-    // Claves primarias.
+    // Primary keys.
     let pk_rows = sqlx::query(&format!(
         "SELECT tc.table_name::text AS table_name, \
                 tc.constraint_name::text AS constraint_name, \
@@ -409,7 +409,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         pk.columns.push(column);
     }
 
-    // Claves foráneas.
+    // Foreign keys.
     let fk_rows = sqlx::query(&format!(
         "SELECT tc.table_name::text AS table_name, \
                 tc.constraint_name::text AS constraint_name, \
@@ -457,8 +457,8 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         }
     }
 
-    // Índices (incluye GIN/GiST/HNSW/IVFFlat y por expresión). Se excluyen los
-    // que respaldan la PK o una constraint (representados por separado).
+    // Indexes (includes GIN/GiST/HNSW/IVFFlat and expression-based). Those
+    // backing the PK or a constraint are excluded (represented separately).
     let idx_rows = sqlx::query(&format!(
         "SELECT t.relname::text AS table_name, ic.relname::text AS index_name, \
                 ix.indisunique::int AS is_unique, am.amname::text AS method, \
@@ -489,7 +489,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         let indexdef: String = r.try_get("indexdef").unwrap_or_default();
 
         let (columns, operators, expression) = parse_pg_index_keys(&indexdef, has_expr != 0);
-        // btree es el método por defecto: no se anota para mantener el modelo limpio.
+        // btree is the default method: not annotated, to keep the model clean.
         let method = if amname.eq_ignore_ascii_case("btree") {
             None
         } else {
@@ -510,7 +510,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         });
     }
 
-    // Triggers (EF no los modela; se preservan crudos).
+    // Triggers (EF does not model them; preserved raw).
     let trg_rows = sqlx::query(&format!(
         "SELECT t.relname::text AS table_name, tg.tgname::text AS trigger_name, \
                 tg.tgtype::int AS tgtype, pg_get_triggerdef(tg.oid)::text AS def, \
@@ -548,9 +548,9 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         });
     }
 
-    // Todas las funciones de usuario del esquema (no solo las de trigger): las
-    // usadas en triggers Y en expresiones de índice (p. ej. `immutable_unaccent`).
-    // Se excluyen las de extensiones (deptype 'e') y las C/internas.
+    // All user functions in the schema (not just trigger ones): those used in
+    // triggers AND in index expressions (e.g. `immutable_unaccent`).
+    // Extension functions (deptype 'e') and C/internal ones are excluded.
     let fn_rows = sqlx::query(&format!(
         "SELECT p.proname::text AS name, n.nspname::text AS schema, \
                 pg_get_functiondef(p.oid)::text AS def \
@@ -577,8 +577,8 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         });
     }
 
-    // Extensiones instaladas (se aseguran con CREATE EXTENSION IF NOT EXISTS).
-    // `plpgsql` viene por defecto en toda BD → se omite.
+    // Installed extensions (ensured with CREATE EXTENSION IF NOT EXISTS).
+    // `plpgsql` ships by default in every DB → omitted.
     let ext_rows = sqlx::query(
         "SELECT extname::text AS name FROM pg_extension \
          WHERE extname <> 'plpgsql' ORDER BY extname",
@@ -596,15 +596,15 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
     Ok(model)
 }
 
-/// Extrae (columnas, operator-classes, expresión) del `CREATE INDEX` textual que
-/// devuelve `pg_get_indexdef`. Para índices por expresión devuelve la expresión
-/// cruda y deja las columnas vacías.
+/// Extracts (columns, operator-classes, expression) from the textual `CREATE INDEX`
+/// returned by `pg_get_indexdef`. For expression-based indexes it returns the raw
+/// expression and leaves the columns empty.
 fn parse_pg_index_keys(
     indexdef: &str,
     has_expr: bool,
 ) -> (Vec<String>, Vec<String>, Option<String>) {
-    // La lista de claves es el contenido entre el primer '(' tras `USING ...` y
-    // su ')' balanceado.
+    // The key list is the content between the first '(' after `USING ...` and
+    // its balanced ')'.
     let Some(open) = indexdef.find('(') else {
         return (Vec::new(), Vec::new(), None);
     };
@@ -627,12 +627,12 @@ fn parse_pg_index_keys(
     let keylist = &indexdef[open + 1..close];
 
     if has_expr {
-        // Índice funcional/FTS: se conserva la expresión completa cruda.
+        // Functional/FTS index: the full raw expression is kept.
         return (Vec::new(), Vec::new(), Some(keylist.trim().to_string()));
     }
 
-    // Índice por columnas: separar por comas de nivel superior; cada parte es
-    // `"col"` o `col` con opcional operator class detrás.
+    // Column index: split by top-level commas; each part is `"col"` or `col`
+    // with an optional operator class behind it.
     let mut columns = Vec::new();
     let mut operators = Vec::new();
     let mut any_op = false;
@@ -651,8 +651,8 @@ fn parse_pg_index_keys(
     (columns, operators, None)
 }
 
-/// Separa una clave de índice en (columna, operator-class). La columna puede ir
-/// citada con comillas dobles; el operator class es el primer token posterior.
+/// Splits an index key into (column, operator-class). The column may be quoted
+/// with double quotes; the operator class is the first token after it.
 fn split_index_key_part(part: &str) -> (String, String) {
     let part = part.trim();
     if let Some(rest) = part.strip_prefix('"') {
@@ -669,7 +669,7 @@ fn split_index_key_part(part: &str) -> (String, String) {
     (col, op)
 }
 
-/// Separa por comas de nivel superior (ignora comas dentro de paréntesis).
+/// Splits by top-level commas (ignores commas inside parentheses).
 fn split_top_level(s: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut depth = 0i32;
@@ -689,7 +689,7 @@ fn split_top_level(s: &str) -> Vec<String> {
     out
 }
 
-/// Decodifica los flags `pg_trigger.tgtype` a (timing, eventos).
+/// Decodes the `pg_trigger.tgtype` flags into (timing, events).
 fn parse_pg_trigger_type(
     tgtype: i32,
 ) -> (
@@ -733,7 +733,7 @@ fn pg_clr(data_type: &str, udt: &str) -> &'static str {
         "date" | "timestamp without time zone" | "timestamp" => "System.DateTime",
         "timestamp with time zone" => "System.DateTimeOffset",
         "bytea" => "System.Byte[]",
-        // Full-text search: tsvector → tipo nativo Npgsql.
+        // Full-text search: tsvector → native Npgsql type.
         "tsvector" => "NpgsqlTypes.NpgsqlTsVector",
         "character varying" | "varchar" | "character" | "char" | "text" | "citext" => {
             "System.String"
@@ -744,7 +744,7 @@ fn pg_clr(data_type: &str, udt: &str) -> &'static str {
             "int8" => "System.Int64",
             "bool" => "System.Boolean",
             "tsvector" => "NpgsqlTypes.NpgsqlTsVector",
-            // pgvector: columna vector(N) → tipo nativo Pgvector.Vector.
+            // pgvector: vector(N) column → native Pgvector.Vector type.
             "vector" => "Pgvector.Vector",
             _ => "System.String",
         },
@@ -767,8 +767,8 @@ fn pg_store_type(
             Some(n) => format!("character({n})"),
             None => "character".to_string(),
         },
-        // numeric/decimal con restricción explícita: preservar (precisión, escala)
-        // para round-trip exacto. `numeric` sin precisión queda sin restricción.
+        // numeric/decimal with an explicit constraint: preserve (precision, scale)
+        // for an exact round-trip. `numeric` without precision stays unconstrained.
         "numeric" | "decimal" => match (precision, scale) {
             (Some(p), Some(s)) => format!("{data_type}({p},{s})"),
             (Some(p), None) => format!("{data_type}({p})"),
@@ -783,8 +783,8 @@ fn pg_store_type(
 // MySQL / MariaDB
 // ---------------------------------------------------------------------------
 
-/// Lee una columna string de MySQL. El driver Any clasifica las columnas
-/// TEXT/BLOB de information_schema como `Blob`, así que se leen como bytes.
+/// Reads a string column from MySQL. The Any driver classifies the TEXT/BLOB
+/// columns of information_schema as `Blob`, so they are read as bytes.
 fn my_str(row: &sqlx::any::AnyRow, col: &str) -> Result<String, sqlx::Error> {
     if let Ok(s) = row.try_get::<String, _>(col) {
         return Ok(s);
@@ -802,7 +802,7 @@ fn my_opt_str(row: &sqlx::any::AnyRow, col: &str) -> Result<Option<String>, sqlx
 }
 
 async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseModel, ReadError> {
-    // El "esquema" en MySQL es la base de datos; si no se indica, la actual.
+    // The "schema" in MySQL is the database; if not given, the current one.
     let db = match schema {
         Some(s) => s.to_string(),
         None => {
@@ -817,9 +817,9 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
     let mut model = DatabaseModel::empty();
     model.default_schema = Some(db.clone());
 
-    // Tablas.
-    // Las columnas string de information_schema en MySQL llegan como BLOB al
-    // driver Any; se castean a CHAR explícitamente.
+    // Tables.
+    // The string columns of information_schema in MySQL arrive as BLOB to the
+    // Any driver; they are cast to CHAR explicitly.
     let table_rows = sqlx::query(&format!(
         "SELECT CONVERT(TABLE_NAME USING utf8mb4) AS TABLE_NAME FROM information_schema.TABLES \
          WHERE TABLE_SCHEMA = '{sc}' AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME"
@@ -850,7 +850,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
         );
     }
 
-    // Columnas (numéricos casteados a SIGNED para el driver Any).
+    // Columns (numerics cast to SIGNED for the Any driver).
     let col_rows = sqlx::query(&format!(
         "SELECT CONVERT(TABLE_NAME USING utf8mb4) AS TABLE_NAME, \
                 CONVERT(COLUMN_NAME USING utf8mb4) AS COLUMN_NAME, \
@@ -885,7 +885,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
 
         let extra_lc = extra.to_ascii_lowercase();
         let identity = extra_lc.contains("auto_increment");
-        // Columnas generadas: EXTRA = 'STORED GENERATED' | 'VIRTUAL GENERATED'.
+        // Generated columns: EXTRA = 'STORED GENERATED' | 'VIRTUAL GENERATED'.
         let computed_stored = extra_lc.contains("stored generated");
         let computed = computed_stored || extra_lc.contains("virtual generated");
         let gen_expr: Option<String> = my_opt_str(&r, "GENERATION_EXPRESSION").unwrap_or_default();
@@ -922,7 +922,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
         });
     }
 
-    // Claves primarias (en MySQL la PK se llama 'PRIMARY').
+    // Primary keys (in MySQL the PK is named 'PRIMARY').
     let pk_rows = sqlx::query(&format!(
         "SELECT CONVERT(TABLE_NAME USING utf8mb4) AS TABLE_NAME, \
                 CONVERT(COLUMN_NAME USING utf8mb4) AS COLUMN_NAME \
@@ -945,7 +945,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
         pk.columns.push(column);
     }
 
-    // Claves foráneas.
+    // Foreign keys.
     let fk_rows = sqlx::query(&format!(
         "SELECT CONVERT(k.TABLE_NAME USING utf8mb4) AS TABLE_NAME, \
                 CONVERT(k.CONSTRAINT_NAME USING utf8mb4) AS CONSTRAINT_NAME, \
@@ -988,7 +988,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
         }
     }
 
-    // Índices (excluyendo la PK).
+    // Indexes (excluding the PK).
     let idx_rows = sqlx::query(&format!(
         "SELECT CONVERT(TABLE_NAME USING utf8mb4) AS TABLE_NAME, \
                 CONVERT(INDEX_NAME USING utf8mb4) AS INDEX_NAME, \
@@ -1009,7 +1009,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
         let name = my_str(&r, "INDEX_NAME")?;
         let non_unique: i64 = r.try_get("NON_UNIQUE").unwrap_or(1);
         let column = my_str(&r, "COLUMN_NAME")?;
-        // INDEX_TYPE = FULLTEXT|SPATIAL|BTREE|HASH; BTREE/HASH = método por defecto.
+        // INDEX_TYPE = FULLTEXT|SPATIAL|BTREE|HASH; BTREE/HASH = default method.
         let index_type = my_str(&r, "INDEX_TYPE").unwrap_or_default();
         let method = match index_type.to_ascii_uppercase().as_str() {
             "FULLTEXT" => Some("fulltext".to_string()),
@@ -1035,7 +1035,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
 }
 
 // ---------------------------------------------------------------------------
-// SQL Server (vía tiberius)
+// SQL Server (via tiberius)
 // ---------------------------------------------------------------------------
 
 async fn ss_query(client: &mut SsClient, sql: &str) -> Result<Vec<tiberius::Row>, ReadError> {
@@ -1056,7 +1056,7 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
     let mut model = DatabaseModel::empty();
     model.default_schema = Some(schema.to_string());
 
-    // Tablas de usuario (excluye system y la tabla de historial).
+    // User tables (excludes system tables and the history table).
     let table_rows = ss_query(
         &mut client,
         &format!(
@@ -1087,7 +1087,7 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
         );
     }
 
-    // Columnas.
+    // Columns.
     let col_rows = ss_query(
         &mut client,
         &format!(
@@ -1143,7 +1143,7 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
         });
     }
 
-    // Columnas computadas (sys.computed_columns): definición + si es PERSISTED.
+    // Computed columns (sys.computed_columns): definition + whether PERSISTED.
     let cc_rows = ss_query(
         &mut client,
         &format!(
@@ -1170,7 +1170,7 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
         }
     }
 
-    // Claves primarias.
+    // Primary keys.
     let pk_rows = ss_query(
         &mut client,
         &format!(
@@ -1201,7 +1201,7 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
         pk.columns.push(column);
     }
 
-    // Claves foráneas (sys.*).
+    // Foreign keys (sys.*).
     let fk_rows = ss_query(
         &mut client,
         &format!(
@@ -1228,7 +1228,7 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
         let column = r.get::<&str, _>("column_name").unwrap_or("").to_string();
         let ref_table = r.get::<&str, _>("ref_table").unwrap_or("").to_string();
         let ref_column = r.get::<&str, _>("ref_column").unwrap_or("").to_string();
-        // SQL Server usa NO_ACTION/SET_NULL… con guion bajo.
+        // SQL Server uses NO_ACTION/SET_NULL… with underscores.
         let delete_rule = r
             .get::<&str, _>("delete_rule")
             .unwrap_or("")
@@ -1250,7 +1250,7 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
         }
     }
 
-    // Índices (excluyendo la PK).
+    // Indexes (excluding the PK).
     let idx_rows = ss_query(
         &mut client,
         &format!(
@@ -1290,17 +1290,17 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
 
     model.tables = tables.into_values().collect();
 
-    // Full-text (best-effort): preserva CREATE FULLTEXT CATALOG/INDEX como DDL
-    // crudo. Las vistas sys.fulltext_* existen aunque el componente no esté
-    // instalado (devuelven vacío); si la consulta falla, se omite con aviso.
+    // Full-text (best-effort): preserves CREATE FULLTEXT CATALOG/INDEX as raw
+    // DDL. The sys.fulltext_* views exist even when the component is not
+    // installed (they return empty); if the query fails, it is skipped with a warning.
     model.raw_objects = read_sqlserver_fulltext(&mut client, &sc).await;
 
     Ok(model)
 }
 
-/// Lee los índices full-text de SQL Server y construye su DDL crudo
+/// Reads SQL Server's full-text indexes and builds their raw DDL
 /// (`CREATE FULLTEXT CATALOG` + `CREATE FULLTEXT INDEX … KEY INDEX …`).
-/// Best-effort: devuelve vacío si no hay full-text o si la consulta falla.
+/// Best-effort: returns empty if there is no full-text or if the query fails.
 async fn read_sqlserver_fulltext(client: &mut SsClient, sc: &str) -> Vec<String> {
     let sql = format!(
         "SELECT SCHEMA_NAME(t.schema_id) AS schema_name, t.name AS table_name, \
@@ -1317,12 +1317,12 @@ async fn read_sqlserver_fulltext(client: &mut SsClient, sc: &str) -> Vec<String>
     let rows = match ss_query(client, &sql).await {
         Ok(r) => r,
         Err(e) => {
-            tracing::warn!("no se pudieron leer índices full-text de SQL Server: {e}");
+            tracing::warn!("could not read SQL Server full-text indexes: {e}");
             return Vec::new();
         }
     };
 
-    // Agrupar columnas por (tabla) preservando catálogo y key index.
+    // Group columns by (table) preserving catalog and key index.
     let mut by_table: BTreeMap<String, (String, String, String, Vec<String>)> = BTreeMap::new();
     for r in &rows {
         let schema_name = r.get::<&str, _>("schema_name").unwrap_or(sc).to_string();

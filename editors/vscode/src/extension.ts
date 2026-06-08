@@ -1,6 +1,7 @@
-// Cliente de VS Code para el language server de molde (molde-lsp).
-// Lanza el binario `molde-lsp` por stdio y delega en él diagnostics,
-// navegación, dependencias y formateo. El resaltado lo da la gramática TextMate.
+// VS Code client for the molde language server (molde-lsp).
+// Launches the `molde-lsp` binary over stdio and delegates diagnostics,
+// navigation, dependencies, and formatting to it. Highlighting is provided by
+// the TextMate grammar.
 
 import { workspace, ExtensionContext, window } from "vscode";
 import {
@@ -41,7 +42,7 @@ export function activate(context: ExtensionContext): void {
 
   client.start().catch((err) => {
     window.showErrorMessage(
-      `No se pudo iniciar molde-lsp ('${command}'). ¿Está compilado y en el PATH? ${err}`
+      `Could not start molde-lsp ('${command}'). Is it compiled and on the PATH? ${err}`
     );
   });
 }

@@ -1,30 +1,30 @@
-//! Construye un árbol genérico a partir de la indentación del texto `.model`.
-//! Cada nodo es `key: inline` (o un ítem de lista `- …`) con hijos más
-//! indentados; los block scalars `|` capturan texto crudo subsiguiente.
+//! Builds a generic tree from the indentation of the `.model` text.
+//! Each node is `key: inline` (or a list item `- …`) with more deeply
+//! indented children; block scalars `|` capture the subsequent raw text.
 
 use crate::error::{MoldeError, Result};
 
 #[derive(Debug, Clone)]
 pub struct Node {
     pub line: usize,
-    /// Clave (`key` en `key: valor`) o `-` para ítems de lista.
+    /// Key (`key` in `key: value`) or `-` for list items.
     pub key: String,
-    /// Texto tras `key:` o tras `- ` (puede ser `""`, `|`, `{..}`, escalar, o un
-    /// `k: v` anidado en ítems de lista).
+    /// Text after `key:` or after `- ` (may be `""`, `|`, `{..}`, a scalar, or a
+    /// nested `k: v` in list items).
     pub inline: String,
-    /// Texto del block scalar si `inline == "|"`.
+    /// Text of the block scalar if `inline == "|"`.
     pub block: Option<String>,
     pub children: Vec<Node>,
 }
 
 impl Node {
-    /// Busca el primer hijo con la clave dada.
+    /// Finds the first child with the given key.
     pub fn child(&self, key: &str) -> Option<&Node> {
         self.children.iter().find(|n| n.key == key)
     }
 
-    /// Interpreta el nodo como par `(clave, valor)`. Para un ítem de lista
-    /// (`- clave: valor`) re-divide `inline`; en otro caso devuelve `(key, inline)`.
+    /// Interprets the node as a `(key, value)` pair. For a list item
+    /// (`- key: value`) it re-splits `inline`; otherwise it returns `(key, inline)`.
     pub fn as_kv(&self) -> (String, String) {
         if self.key == "-" {
             split_line(&self.inline)
@@ -40,7 +40,7 @@ struct Line {
     no: usize,
 }
 
-/// Líneas significativas (sin blancos ni comentarios), con su indentación.
+/// Significant lines (no blanks or comments), with their indentation.
 fn scan(src: &str) -> Vec<Line> {
     src.lines()
         .enumerate()
@@ -60,7 +60,7 @@ fn scan(src: &str) -> Vec<Line> {
         .collect()
 }
 
-/// Parsea el texto completo a una lista de nodos de nivel superior.
+/// Parses the full text into a list of top-level nodes.
 pub fn parse_tree(src: &str) -> Result<Vec<Node>> {
     let raw_all: Vec<&str> = src.lines().collect();
     let lines = scan(src);
@@ -81,7 +81,7 @@ fn build(lines: &[Line], idx: &mut usize, raw_all: &[&str]) -> Result<Vec<Node>>
             break;
         }
         if cur.indent > level {
-            return Err(MoldeError::new(cur.no, "indentación inesperada"));
+            return Err(MoldeError::new(cur.no, "unexpected indentation"));
         }
         let (key, inline) = split_line(&cur.text);
         let line_no = cur.no;
@@ -96,8 +96,8 @@ fn build(lines: &[Line], idx: &mut usize, raw_all: &[&str]) -> Result<Vec<Node>>
             children: Vec::new(),
         };
 
-        // ¿El valor efectivo es un block scalar `|`? Para ítems de lista hay que
-        // mirar el valor tras re-dividir (p. ej. `- normalize_body: |`).
+        // Is the effective value a block scalar `|`? For list items we must
+        // look at the value after re-splitting (e.g. `- normalize_body: |`).
         let is_block = if node.key == "-" {
             node.inline == "|" || split_line(&node.inline).1 == "|"
         } else {
@@ -107,7 +107,7 @@ fn build(lines: &[Line], idx: &mut usize, raw_all: &[&str]) -> Result<Vec<Node>>
         if is_block {
             node.block = Some(capture_block(lines, idx, cur_indent, raw_all));
         } else if *idx < lines.len() && lines[*idx].indent > cur_indent {
-            // Hijos: las siguientes líneas más indentadas que la actual.
+            // Children: the following lines indented more than the current one.
             node.children = build(lines, idx, raw_all)?;
         }
         nodes.push(node);
@@ -115,8 +115,8 @@ fn build(lines: &[Line], idx: &mut usize, raw_all: &[&str]) -> Result<Vec<Node>>
     Ok(nodes)
 }
 
-/// Captura el texto crudo de un block scalar: líneas con indentación mayor que
-/// `key_indent`, recortando el sangrado común (el del primer renglón del bloque).
+/// Captures the raw text of a block scalar: lines indented more than
+/// `key_indent`, trimming the common indent (that of the block's first line).
 fn capture_block(lines: &[Line], idx: &mut usize, key_indent: usize, raw_all: &[&str]) -> String {
     let mut block_lines: Vec<String> = Vec::new();
     let mut base: Option<usize> = None;
@@ -125,7 +125,7 @@ fn capture_block(lines: &[Line], idx: &mut usize, key_indent: usize, raw_all: &[
         if l.indent <= key_indent {
             break;
         }
-        // Tomamos el texto crudo original para preservar el contenido tal cual.
+        // We take the original raw text to preserve the content as-is.
         let raw = raw_all.get(l.no - 1).copied().unwrap_or(&l.text);
         let this_indent = raw.len() - raw.trim_start().len();
         let b = *base.get_or_insert(this_indent);
@@ -140,8 +140,8 @@ fn capture_block(lines: &[Line], idx: &mut usize, key_indent: usize, raw_all: &[
     block_lines.join("\n")
 }
 
-/// Separa una línea en `(key, inline)`. Soporta `key: valor`, `key:` (sin valor)
-/// e ítems de lista `- …`.
+/// Splits a line into `(key, inline)`. Supports `key: value`, `key:` (no value)
+/// and list items `- …`.
 fn split_line(text: &str) -> (String, String) {
     if let Some(rest) = text.strip_prefix("- ") {
         return ("-".to_string(), rest.trim().to_string());
@@ -149,7 +149,7 @@ fn split_line(text: &str) -> (String, String) {
     if text == "-" {
         return ("-".to_string(), String::new());
     }
-    // Buscar el primer ':' a nivel superior (fuera de comillas/corchetes).
+    // Find the first ':' at the top level (outside quotes/brackets).
     let mut depth = 0i32;
     let mut in_str = false;
     let chars: Vec<char> = text.chars().collect();

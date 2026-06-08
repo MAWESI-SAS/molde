@@ -1,19 +1,19 @@
-//! Errores del lenguaje molde, con diagnósticos legibles: línea, columna y un
-//! recorte (snippet) de la línea ofensora con un cursor `^` debajo.
+//! molde language errors, with readable diagnostics: line, column and a
+//! snippet of the offending line with a `^` cursor underneath.
 
 use std::fmt;
 
-/// Error de parseo de un archivo `.model`.
+/// Parse error of a `.model` file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MoldeError {
-    /// Línea (1-based) donde se detectó el problema; 0 si no aplica.
+    /// Line (1-based) where the problem was detected; 0 if not applicable.
     pub line: usize,
-    /// Columna (1-based) del cursor `^`, si se pudo localizar.
+    /// Column (1-based) of the `^` cursor, if it could be located.
     pub column: Option<usize>,
     pub message: String,
-    /// Nombre del archivo de origen, si se conoce (lo aporta `parse_project`).
+    /// Name of the source file, if known (provided by `parse_project`).
     pub file: Option<String>,
-    /// Texto de la línea ofensora (sin blancos finales), si se adjuntó la fuente.
+    /// Text of the offending line (without trailing whitespace), if the source was attached.
     pub snippet: Option<String>,
 }
 
@@ -28,10 +28,10 @@ impl MoldeError {
         }
     }
 
-    /// Adjunta la fuente para enriquecer el error con la línea ofensora y, en lo
-    /// posible, la columna (deducida del primer fragmento entre comillas simples
-    /// del mensaje, p. ej. `faceta desconocida: 'uniq'`). Idempotente: si ya hay
-    /// snippet, no lo pisa. Llamar en la frontera pública del parser.
+    /// Attaches the source to enrich the error with the offending line and, when
+    /// possible, the column (deduced from the first single-quoted fragment of the
+    /// message, e.g. `unknown facet: 'uniq'`). Idempotent: if a snippet
+    /// already exists, it is not overwritten. Call at the parser's public boundary.
     pub fn with_source(mut self, src: &str) -> Self {
         if self.line == 0 || self.snippet.is_some() {
             return self;
@@ -46,13 +46,13 @@ impl MoldeError {
         self
     }
 
-    /// Etiqueta el error con el archivo de origen (contexto de `parse_project`).
+    /// Labels the error with the source file (context from `parse_project`).
     pub fn in_file(mut self, name: impl Into<String>) -> Self {
         self.file = Some(name.into());
         self
     }
 
-    /// Cabecera de una línea: `[archivo:]línea L[, columna C]`.
+    /// Header of a line: `[file:]line L[, column C]`.
     fn location(&self) -> String {
         let mut loc = String::new();
         if let Some(f) = &self.file {
@@ -62,9 +62,9 @@ impl MoldeError {
             }
         }
         if self.line > 0 {
-            loc.push_str(&format!("línea {}", self.line));
+            loc.push_str(&format!("line {}", self.line));
             if let Some(c) = self.column {
-                loc.push_str(&format!(", columna {c}"));
+                loc.push_str(&format!(", column {c}"));
             }
         }
         loc
@@ -78,7 +78,7 @@ impl fmt::Display for MoldeError {
             return write!(f, "{}", self.message);
         }
         write!(f, "{}: {}", loc, self.message)?;
-        // Diagnóstico tipo compilador: la línea ofensora + un cursor `^`.
+        // Compiler-style diagnostic: the offending line + a `^` cursor.
         if let Some(snippet) = &self.snippet {
             let num = self.line.to_string();
             let gutter = " ".repeat(num.len());
@@ -96,14 +96,14 @@ impl std::error::Error for MoldeError {}
 
 pub type Result<T> = std::result::Result<T, MoldeError>;
 
-/// Primer fragmento entre comillas simples del mensaje (`'…'`), si existe.
+/// First single-quoted fragment of the message (`'…'`), if any.
 fn quoted_fragment(msg: &str) -> Option<String> {
     let start = msg.find('\'')? + 1;
     let end = msg[start..].find('\'')? + start;
     Some(msg[start..end].to_string())
 }
 
-/// Columna (1-based, en caracteres) donde aparece `needle` dentro de `line`.
+/// Column (1-based, in characters) where `needle` appears within `line`.
 fn char_column(line: &str, needle: &str) -> Option<usize> {
     if needle.is_empty() {
         return None;
@@ -112,7 +112,7 @@ fn char_column(line: &str, needle: &str) -> Option<usize> {
     Some(line[..byte].chars().count() + 1)
 }
 
-/// Columna (1-based) del primer carácter no blanco de `line`.
+/// Column (1-based) of the first non-whitespace character of `line`.
 fn first_nonspace_column(line: &str) -> Option<usize> {
     line.char_indices()
         .position(|(_, c)| !c.is_whitespace())
@@ -124,45 +124,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sin_fuente_muestra_solo_linea_y_mensaje() {
-        let e = MoldeError::new(3, "algo salió mal");
-        assert_eq!(e.to_string(), "línea 3: algo salió mal");
+    fn without_source_shows_only_line_and_message() {
+        let e = MoldeError::new(3, "something went wrong");
+        assert_eq!(e.to_string(), "line 3: something went wrong");
     }
 
     #[test]
-    fn sin_linea_muestra_solo_mensaje() {
-        let e = MoldeError::new(0, "archivo vacío");
-        assert_eq!(e.to_string(), "archivo vacío");
+    fn without_line_shows_only_message() {
+        let e = MoldeError::new(0, "empty file");
+        assert_eq!(e.to_string(), "empty file");
     }
 
     #[test]
-    fn with_source_localiza_columna_del_token_citado() {
+    fn with_source_locates_column_of_quoted_token() {
         let src = "Customer:\n  fields:\n    Email: string uniq\n";
-        let e = MoldeError::new(3, "faceta desconocida: 'uniq'").with_source(src);
+        let e = MoldeError::new(3, "unknown facet: 'uniq'").with_source(src);
         assert_eq!(e.column, Some(19));
         assert_eq!(e.snippet.as_deref(), Some("    Email: string uniq"));
         let shown = e.to_string();
-        assert!(shown.contains("línea 3, columna 19: faceta desconocida: 'uniq'"));
+        assert!(shown.contains("line 3, column 19: unknown facet: 'uniq'"));
         assert!(shown.contains("3 |     Email: string uniq"));
-        // El cursor cae justo bajo la 'u' de uniq (columna 19 → 18 espacios).
+        // The cursor falls right under the 'u' of uniq (column 19 → 18 spaces).
         assert!(shown.contains(&format!("\n  | {}^", " ".repeat(18))));
     }
 
     #[test]
-    fn with_source_sin_token_apunta_al_primer_no_blanco() {
+    fn with_source_without_token_points_to_first_nonspace() {
         let src = "  Customer\n";
-        let e = MoldeError::new(1, "sección desconocida").with_source(src);
+        let e = MoldeError::new(1, "unknown section").with_source(src);
         assert_eq!(e.column, Some(3));
     }
 
     #[test]
-    fn in_file_prefija_el_nombre() {
+    fn in_file_prefixes_the_name() {
         let e = MoldeError::new(2, "x").in_file("Customer.model");
-        assert_eq!(e.to_string(), "Customer.model:línea 2: x");
+        assert_eq!(e.to_string(), "Customer.model:line 2: x");
     }
 
     #[test]
-    fn with_source_es_idempotente() {
+    fn with_source_is_idempotent() {
         let src = "uno\ndos\n";
         let e = MoldeError::new(1, "err").with_source(src);
         let snippet = e.snippet.clone();

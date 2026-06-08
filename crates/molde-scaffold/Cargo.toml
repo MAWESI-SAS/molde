@@ -5,12 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-description = "Database-first: lectura de esquema y emisión de archivos .model"
+description = "Database-first: schema reading and .model file emission"
 
 [features]
 default = ["tls-rustls"]
 tls-rustls = ["sqlx/tls-rustls"]
-# Backend OpenSSL: más tolerante con certificados X.509 v1 (servidores legacy).
+# OpenSSL backend: more tolerant of X.509 v1 certificates (legacy servers).
 tls-native-tls = ["sqlx/tls-native-tls"]
 
 [dependencies]
@@ -21,7 +21,7 @@ sqlx = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true, features = ["net", "sync"] }
-# SQL Server (TDS) para lectura de esquema.
+# SQL Server (TDS) for schema reading.
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 

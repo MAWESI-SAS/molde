@@ -1,8 +1,8 @@
 //! # molde-providers
 //!
-//! Generación de SQL específica por motor. Define el trait [`SqlGenerator`] y
-//! sus implementaciones. En Fase 0 hay dos: SQLite (tests rápidos) y PostgreSQL.
-//! SQL Server y MySQL llegan en fase posterior siguiendo el mismo trait.
+//! Engine-specific SQL generation. Defines the [`SqlGenerator`] trait and its
+//! implementations. In Phase 0 there are two: SQLite (fast tests) and PostgreSQL.
+//! SQL Server and MySQL arrive in a later phase following the same trait.
 
 pub mod generator;
 pub mod mysql;
@@ -16,18 +16,18 @@ pub use postgres::PostgresGenerator;
 pub use sqlite::SqliteGenerator;
 pub use sqlserver::SqlServerGenerator;
 
-/// Motores soportados.
+/// Supported engines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Provider {
     Sqlite,
     Postgres,
     MySql,
-    /// SQL Server: apply y scaffold vía tiberius (driver TDS).
+    /// SQL Server: apply and scaffold via tiberius (TDS driver).
     SqlServer,
 }
 
 impl Provider {
-    /// Resuelve un provider desde una cadena (`--provider postgres`).
+    /// Resolves a provider from a string (`--provider postgres`).
     pub fn parse(s: &str) -> Option<Self> {
         match s.to_ascii_lowercase().as_str() {
             "sqlite" => Some(Self::Sqlite),
@@ -38,7 +38,7 @@ impl Provider {
         }
     }
 
-    /// Infiere el provider desde el esquema de una cadena de conexión sqlx.
+    /// Infers the provider from the scheme of an sqlx connection string.
     pub fn from_url(url: &str) -> Option<Self> {
         let lower = url.trim().to_ascii_lowercase();
         if lower.starts_with("postgres://") || lower.starts_with("postgresql://") {
@@ -54,7 +54,7 @@ impl Provider {
         }
     }
 
-    /// Devuelve el generador correspondiente como objeto de trait.
+    /// Returns the corresponding generator as a trait object.
     pub fn generator(self) -> Box<dyn SqlGenerator> {
         match self {
             Self::Sqlite => Box::new(SqliteGenerator::new()),
@@ -139,11 +139,11 @@ mod tests {
     }
 
     #[test]
-    fn postgres_decimal_honra_precision_y_scale() {
-        // Un Decimal lógico (store_type None) con precision/scale debe emitir
-        // `numeric(p,s)`; sin ellos, `numeric` (precisión arbitraria). Regresión:
-        // el flujo model-first canonicaliza el store_type a None y deja solo
-        // precision/scale, así que el provider DEBE reconstruir la precisión.
+    fn postgres_decimal_honors_precision_and_scale() {
+        // A logical Decimal (store_type None) with precision/scale must emit
+        // `numeric(p,s)`; without them, `numeric` (arbitrary precision). Regression:
+        // the model-first flow canonicalizes store_type to None and leaves only
+        // precision/scale, so the provider MUST reconstruct the precision.
         let gen = PostgresGenerator::new();
         let mut total = name_col();
         total.name = "Total".into();
@@ -186,9 +186,9 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_alter_column_se_difiere_al_rebuild() {
-        // SQLite ya no falla en ALTER COLUMN: lo omite (no-op) porque el cambio
-        // se materializa con la RebuildTable que emite `diff()`.
+    fn sqlite_alter_column_is_deferred_to_rebuild() {
+        // SQLite no longer fails on ALTER COLUMN: it skips it (no-op) because the
+        // change is materialized via the RebuildTable that `diff()` emits.
         let gen = SqliteGenerator::new();
         let op = Operation::AlterColumn {
             schema: None,
@@ -233,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn postgres_foreign_key_e_indice() {
+    fn postgres_foreign_key_and_index() {
         let gen = PostgresGenerator::new();
         let fk = gen.emit(&fk_op()).unwrap().join("\n");
         assert!(fk.contains(
@@ -247,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn postgres_indice_vectorial_hnsw_con_operator_class() {
+    fn postgres_hnsw_vector_index_with_operator_class() {
         use molde_core::model::Index;
         let op = Operation::CreateIndex {
             schema: None,
@@ -269,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn postgres_indice_gin_por_expresion() {
+    fn postgres_gin_index_by_expression() {
         use molde_core::model::Index;
         let op = Operation::CreateIndex {
             schema: None,
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn postgres_funcion_y_trigger_emiten_definition_crudo() {
+    fn postgres_function_and_trigger_emit_raw_definition() {
         use molde_core::model::{DbFunction, Trigger, TriggerEvent, TriggerTiming};
         let gen = PostgresGenerator::new();
         let f = gen
@@ -345,7 +345,7 @@ mod tests {
             .unwrap()
             .join("\n");
         assert_eq!(sql, "CREATE EXTENSION IF NOT EXISTS \"vector\";");
-        // SQLite la omite con aviso (sin SQL).
+        // SQLite skips it with a warning (no SQL).
         assert!(SqliteGenerator::new()
             .emit(&Operation::EnsureExtension {
                 name: "vector".into()
@@ -355,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_omite_funciones_y_triggers() {
+    fn sqlite_skips_functions_and_triggers() {
         use molde_core::model::DbFunction;
         let gen = SqliteGenerator::new();
         let out = gen
@@ -367,11 +367,11 @@ mod tests {
                 },
             })
             .unwrap();
-        assert!(out.is_empty(), "SQLite omite funciones con aviso");
+        assert!(out.is_empty(), "SQLite skips functions with a warning");
     }
 
     #[test]
-    fn sqlite_rebuild_table_secuencia() {
+    fn sqlite_rebuild_table_sequence() {
         use molde_core::model::PrimaryKey;
         let mut t = customer();
         t.name = "Order".into();
@@ -393,13 +393,13 @@ mod tests {
         assert!(joined.contains("DROP TABLE \"Order\";"));
         assert!(joined.contains("ALTER TABLE \"Order_molde_new\" RENAME TO \"Order\";"));
 
-        // Motores capaces: RebuildTable es no-op (usan ALTER granular).
+        // Capable engines: RebuildTable is a no-op (they use granular ALTER).
         assert!(PostgresGenerator::new().emit(&op).unwrap().is_empty());
         assert!(MySqlGenerator::new().emit(&op).unwrap().is_empty());
     }
 
     #[test]
-    fn sqlserver_columna_computada_persisted() {
+    fn sqlserver_persisted_computed_column() {
         use molde_core::model::Column;
         let col = Column {
             name: "FullName".into(),
@@ -431,7 +431,7 @@ mod tests {
     }
 
     #[test]
-    fn datos_sembrados_insert_update_delete() {
+    fn seed_data_insert_update_delete() {
         use serde_json::json;
         let mut row = std::collections::BTreeMap::new();
         row.insert("Id".to_string(), json!(1));
@@ -446,12 +446,12 @@ mod tests {
             })
             .unwrap()
             .join("\n");
-        // Orden de columnas alfabético (BTreeMap), bool de Postgres = TRUE, escape de comillas.
+        // Columns in alphabetical order (BTreeMap), Postgres bool = TRUE, quote escaping.
         assert_eq!(
             ins,
             "INSERT INTO \"Cat\" (\"Active\", \"Id\", \"Name\") VALUES (TRUE, 1, 'O''Brien');"
         );
-        // En MySQL el bool es 1/0.
+        // In MySQL the bool is 1/0.
         let ins_my = MySqlGenerator::new()
             .emit(&Operation::InsertData {
                 schema: None,
@@ -492,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn raw_sql_verbatim_en_todos_los_motores() {
+    fn raw_sql_verbatim_in_all_engines() {
         let op = Operation::RawSql {
             sql: "CREATE FULLTEXT CATALOG [ft];".into(),
         };
@@ -507,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn mysql_create_table_fk_indice() {
+    fn mysql_create_table_fk_index() {
         let gen = MySqlGenerator::new();
         let create = gen
             .emit(&Operation::CreateTable { table: customer() })
@@ -528,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn mysql_fulltext_index_y_columna_generada() {
+    fn mysql_fulltext_index_and_generated_column() {
         use molde_core::model::{Column, Index};
         let gen = MySqlGenerator::new();
         // FULLTEXT index.
@@ -551,7 +551,7 @@ mod tests {
             "got: {sql}"
         );
 
-        // Columna generada STORED.
+        // STORED generated column.
         let col = Column {
             name: "slug".into(),
             store_type: Some("varchar(255)".into()),
@@ -582,23 +582,23 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_indice_si_fk_inline_en_create_table() {
+    fn sqlite_index_yes_fk_inline_in_create_table() {
         let gen = SqliteGenerator::new();
-        // El índice se genera.
+        // The index is generated.
         let ix = gen.emit(&index_op()).unwrap().join("\n");
         assert!(ix.contains(
             "CREATE UNIQUE INDEX \"IX_Order_CustomerId\" ON \"Order\" (\"CustomerId\");"
         ));
-        // La FK por ALTER se omite (sin sentencias): SQLite la declara inline.
+        // The FK via ALTER is skipped (no statements): SQLite declares it inline.
         let fk = gen.emit(&fk_op()).unwrap();
         assert!(
             fk.is_empty(),
-            "SQLite omite AddForeignKey (va inline en CREATE TABLE)"
+            "SQLite skips AddForeignKey (goes inline in CREATE TABLE)"
         );
     }
 
     #[test]
-    fn sqlite_create_table_incluye_fk_inline() {
+    fn sqlite_create_table_includes_fk_inline() {
         use molde_core::model::{ForeignKey, ReferentialAction};
         let mut order = customer();
         order.name = "Order".into();
@@ -621,7 +621,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlserver_genera_tsql() {
+    fn sqlserver_generates_tsql() {
         let gen = SqlServerGenerator::new();
         let create = gen
             .emit(&Operation::CreateTable { table: customer() })

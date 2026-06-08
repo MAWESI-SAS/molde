@@ -1,12 +1,12 @@
-//! Utilidades de texto: conversión de posiciones LSP (UTF-16) ↔ índice de
-//! carácter, palabra bajo el cursor, extracción de FK y mapeo a símbolos.
+//! Text utilities: converting LSP positions (UTF-16) ↔ character index, the word
+//! under the cursor, FK extraction, and mapping to symbols.
 
 use molde_lang::{MoldeError, OutlineItem};
 use tower_lsp::lsp_types::{
     Diagnostic, DiagnosticSeverity, DocumentSymbol, Position, Range, SymbolKind, Url,
 };
 
-/// Nombre de archivo (último segmento) de un `Url`.
+/// File name (last segment) of a `Url`.
 pub fn uri_file_name(uri: &Url) -> String {
     uri.path_segments()
         .and_then(|mut s| s.next_back())
@@ -15,13 +15,13 @@ pub fn uri_file_name(uri: &Url) -> String {
         .to_string()
 }
 
-/// La n-ésima línea (0-based) de `text`, o `""` si no existe.
+/// The n-th line (0-based) of `text`, or `""` if it does not exist.
 pub fn nth_line(text: &str, n: usize) -> &str {
     text.lines().nth(n).unwrap_or("")
 }
 
-/// Convierte un offset en unidades UTF-16 (lo que envía el cliente LSP) al índice
-/// de carácter dentro de `line`.
+/// Converts an offset in UTF-16 units (what the LSP client sends) to the character
+/// index within `line`.
 pub fn utf16_to_char_idx(line: &str, utf16: usize) -> usize {
     let mut units = 0usize;
     for (ci, ch) in line.chars().enumerate() {
@@ -33,7 +33,7 @@ pub fn utf16_to_char_idx(line: &str, utf16: usize) -> usize {
     line.chars().count()
 }
 
-/// Convierte un índice de carácter al offset UTF-16 correspondiente en `line`.
+/// Converts a character index to the corresponding UTF-16 offset in `line`.
 pub fn char_to_utf16(line: &str, char_idx: usize) -> u32 {
     line.chars()
         .take(char_idx)
@@ -41,7 +41,7 @@ pub fn char_to_utf16(line: &str, char_idx: usize) -> u32 {
         .sum()
 }
 
-/// Identificador (`[A-Za-z0-9_]`) bajo el cursor (índice de carácter).
+/// Identifier (`[A-Za-z0-9_]`) under the cursor (character index).
 pub fn word_at(line: &str, char_idx: usize) -> Option<String> {
     let chars: Vec<char> = line.chars().collect();
     if char_idx > chars.len() {
@@ -62,8 +62,8 @@ pub fn word_at(line: &str, char_idx: usize) -> Option<String> {
     Some(chars[start..end].iter().collect())
 }
 
-/// Si la línea contiene una FK (`... references: Tabla.col ...`), devuelve la
-/// tabla referenciada.
+/// If the line contains an FK (`... references: Table.col ...`), returns the
+/// referenced table.
 pub fn references_target(line: &str) -> Option<String> {
     let pos = line.find("references:")? + "references:".len();
     let rest = line[pos..].trim_start();
@@ -78,7 +78,7 @@ pub fn references_target(line: &str) -> Option<String> {
     }
 }
 
-/// Rango que cubre todo el documento (para reemplazo total al formatear).
+/// Range covering the whole document (for full replacement when formatting).
 pub fn whole_range(text: &str) -> Range {
     let last_line = text.lines().count().saturating_sub(1);
     let last = text.lines().last().unwrap_or("");
@@ -86,8 +86,8 @@ pub fn whole_range(text: &str) -> Range {
     Range::new(Position::new(0, 0), Position::new(last_line as u32, end))
 }
 
-/// Construye un diagnóstico a partir de un `MoldeError`, subrayando desde la
-/// columna hasta el final de la línea ofensora.
+/// Builds a diagnostic from a `MoldeError`, underlining from the column to the end
+/// of the offending line.
 pub fn diagnostic_from(e: &MoldeError, text: &str) -> Diagnostic {
     let line0 = e.line.saturating_sub(1);
     let line_text = nth_line(text, line0);
@@ -108,16 +108,16 @@ pub fn diagnostic_from(e: &MoldeError, text: &str) -> Diagnostic {
     }
 }
 
-/// Mapea un `OutlineItem` a un `DocumentSymbol` (recursivo).
+/// Maps an `OutlineItem` to a `DocumentSymbol` (recursive).
 pub fn to_symbol(item: &OutlineItem, lines: &[&str], depth: usize) -> DocumentSymbol {
     let line0 = item.line.saturating_sub(1) as u32;
     let line_text = lines.get(line0 as usize).copied().unwrap_or("");
     let end = char_to_utf16(line_text, line_text.chars().count());
     let range = Range::new(Position::new(line0, 0), Position::new(line0, end));
     let kind = match depth {
-        0 => SymbolKind::CLASS,     // entidad
-        1 => SymbolKind::NAMESPACE, // sección (fields, indexes, …)
-        _ => SymbolKind::FIELD,     // campo / ítem
+        0 => SymbolKind::CLASS,     // entity
+        1 => SymbolKind::NAMESPACE, // section (fields, indexes, …)
+        _ => SymbolKind::FIELD,     // field / item
     };
     let detail = if item.detail.trim().is_empty() {
         None
@@ -160,26 +160,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn references_target_extrae_la_tabla() {
+    fn references_target_extracts_the_table() {
         let line = "    Tenants: {fk: tenantId, references: Tenants.id, onDelete: cascade}";
         assert_eq!(references_target(line).as_deref(), Some("Tenants"));
         assert_eq!(references_target("    Id: int pk"), None);
     }
 
     #[test]
-    fn word_at_encuentra_identificador() {
+    fn word_at_finds_identifier() {
         let line = "    Email: string?";
-        // En la 'm' de Email (índice 5).
+        // At the 'm' in Email (index 5).
         assert_eq!(word_at(line, 5).as_deref(), Some("Email"));
-        // En un espacio.
+        // On a space.
         assert_eq!(word_at(line, 3), None);
     }
 
     #[test]
-    fn utf16_y_char_idx_son_inversos() {
-        // 🛈 = 2 unidades UTF-16. La columna en chars y en UTF-16 difiere tras él.
+    fn utf16_and_char_idx_are_inverses() {
+        // 🛈 = 2 UTF-16 units. The column in chars and in UTF-16 differs after it.
         let line = "# 🛈 nota: Email";
-        // 'E' de Email: índice de carácter.
+        // 'E' in Email: character index.
         let cidx = line.chars().position(|c| c == 'E').unwrap();
         let u = char_to_utf16(line, cidx);
         assert_eq!(utf16_to_char_idx(line, u as usize), cidx);

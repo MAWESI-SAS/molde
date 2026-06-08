@@ -1,8 +1,8 @@
-//! Provider de MySQL / MariaDB.
+//! MySQL / MariaDB provider.
 //!
-//! Diferencias frente a Postgres: citado con backticks, `AUTO_INCREMENT`,
-//! `MODIFY COLUMN` para alterar, `DROP FOREIGN KEY` / `DROP INDEX ... ON`. No
-//! cualifica por esquema (la base de datos la selecciona la conexión).
+//! Differences from Postgres: quoting with backticks, `AUTO_INCREMENT`,
+//! `MODIFY COLUMN` to alter, `DROP FOREIGN KEY` / `DROP INDEX ... ON`. It does
+//! not qualify by schema (the database is selected by the connection).
 
 use molde_core::diff::Operation;
 use molde_core::model::{Column, ForeignKey, Index, ReferentialAction, Table};
@@ -28,7 +28,7 @@ impl MySqlGenerator {
 
     fn column_def(&self, column: &Column) -> Result<String, ProviderError> {
         let mut parts = vec![self.quote_ident(&column.name), self.store_type_for(column)?];
-        // Columna generada (STORED/VIRTUAL). Excluye AUTO_INCREMENT y DEFAULT.
+        // Generated column (STORED/VIRTUAL). Excludes AUTO_INCREMENT and DEFAULT.
         if let Some(expr) = &column.computed_sql {
             let kind = if column.computed_stored {
                 "STORED"
@@ -59,7 +59,7 @@ impl MySqlGenerator {
             lines.push(format!("    {}", self.column_def(c)?));
         }
         if let Some(pk) = &table.primary_key {
-            // MySQL ignora el nombre de la PK (siempre es PRIMARY).
+            // MySQL ignores the PK name (it is always PRIMARY).
             let cols: Vec<String> = pk.columns.iter().map(|c| self.quote_ident(c)).collect();
             lines.push(format!("    PRIMARY KEY ({})", cols.join(", ")));
         }
@@ -89,7 +89,7 @@ impl MySqlGenerator {
     }
 
     fn create_index(&self, table: &str, index: &Index) -> String {
-        // FULLTEXT/SPATIAL tienen prioridad sobre UNIQUE (MySQL no combina).
+        // FULLTEXT/SPATIAL take priority over UNIQUE (MySQL does not combine them).
         let kind = match index.method.as_deref() {
             Some("fulltext") => "FULLTEXT ",
             Some("spatial") => "SPATIAL ",
@@ -138,7 +138,7 @@ impl SqlGenerator for MySqlGenerator {
                 _ => "decimal(18,2)",
             },
             "System.DateTime" => "datetime(6)",
-            "System.DateTimeOffset" => "datetime(6)", // MySQL no tiene tipo con offset
+            "System.DateTimeOffset" => "datetime(6)", // MySQL has no type with offset
             "System.Guid" => "char(36)",
             "System.Byte[]" => "longblob",
             "System.String" => {
