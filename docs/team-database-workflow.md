@@ -83,8 +83,8 @@ All exist today unless marked *(proposed)*.
 | `molde status` | List known/applied migrations. |
 | `molde undo` | Remove the latest (un-merged, local) migration while iterating. |
 | `molde fmt` | Canonicalize `.model` files (run before commit; enforce in CI). |
+| `molde snapshot` | Regenerate `snapshot.json` from `.model` with no migration (or verify with `--check`) — powers the merge driver (§7.2). ✅ *exists today* |
 | `molde up` *(proposed, §11)* | One command: `git`-aware catch-up = apply pending migrations **or** `sync` from trunk + drift report. |
-| `molde snapshot` *(proposed, §11)* | Regenerate `snapshot.json` from `.model` with no migration — powers the merge driver. |
 
 ---
 
@@ -182,31 +182,32 @@ case and it is free.
 When two branches each ran `molde migrate`, both regenerated `snapshot.json`, so
 git reports a conflict on that one file. **Do not hand-merge it.** Because the
 snapshot is just the normalized serialization of the model, the correct snapshot
-after a merge is *the serialization of the merged `.model` files*:
+after a merge is *the serialization of the merged `.model` files* — exactly what
+`molde snapshot` writes (byte-identical to what `molde migrate` would write):
 
 ```bash
-# proposed command (§11) — regenerate from the merged model, no migration:
+# regenerate from the merged model, no migration:
 molde snapshot            # writes migrations/snapshot.json from models/
 git add migrations/snapshot.json
 ```
 
-This is wired as a git **merge driver** so the resolution is automatic:
+Wire it as a git **merge driver** so the resolution is automatic:
 
 ```gitattributes
 # .gitattributes
 migrations/snapshot.json merge=molde-snapshot
 ```
 ```ini
-# .git/config (or installed by `molde init-team`)
+# .git/config (installed by `molde init-team`, §11 item 6)
 [merge "molde-snapshot"]
     name = regenerate molde snapshot from models
     driver = molde snapshot --output %A
 ```
 
-Until `molde snapshot` exists, the manual resolution is: take either side of the
-conflict, then re-derive it (today: `molde migrate -m _snapshot_rebuild` produces
-an empty migration only if the model truly changed; otherwise the snapshot is
-already correct — see §11 item 2 for why a dedicated command is needed).
+> The merge driver re-derives the snapshot from the **working-tree** `.model`
+> files. In the common case (only `snapshot.json` conflicts, models merge
+> cleanly) this is fully automatic. If a `.model` file *also* conflicted, resolve
+> that text conflict first (§7.3), then run `molde snapshot` to fix the snapshot.
 
 ### 7.3 Same `.model` entity edited two ways — a normal, small text merge
 Resolve the `.model` text conflict like any code merge, then regenerate the
@@ -250,9 +251,9 @@ On every PR:
    a fresh-applied DB `sync --dry-run` against the model-built DB reports **0
    additive changes**. *(A dedicated `molde verify` would make this one step —
    §11 item 3.)*
-4. **Snapshot consistency** — `snapshot.json` equals the serialization of
-   `models/` (no stale snapshot). *(One step with `molde snapshot --check` —
-   §11 item 2.)*
+4. **Snapshot consistency** — `molde snapshot --check` verifies `snapshot.json`
+   equals the serialization of `models/` (no stale snapshot), exiting non-zero if
+   it drifted. ✅ *exists today*
 
 On merge to `main`: apply migrations to the **trunk DB** (§8).
 
@@ -278,19 +279,19 @@ On merge to `main`: apply migrations to the **trunk DB** (§8).
 Everything above works **today** with `git + molde apply/migrate/sync`, except
 the conveniences below. Prioritized by impact on conflict-minimization:
 
-| # | Gap | Why it matters | Proposed shape |
+| # | Gap | Why it matters | Shape |
 |---|---|---|---|
-| 1 | **Snapshot merge driver** | The #1 remaining merge friction (§7.2). Makes concurrent migrations conflict-free in practice. | `molde snapshot [--output P] [--check]` (regenerate/verify `snapshot.json` from `models/`) + a `.gitattributes` merge driver installed by `molde init-team`. |
-| 2 | **`molde snapshot --check`** | CI gate §9.4; lets devs detect a stale snapshot before pushing. | Same command, `--check` exits non-zero on mismatch. |
+| 1 | **`molde snapshot`** ✅ **done** | The #1 remaining merge friction (§7.2). Regenerating the snapshot from the merged models makes concurrent migrations conflict-free. | `molde snapshot [--from-models D] [--output P]` regenerates `snapshot.json` byte-identically to `migrate`. Wire as a `.gitattributes` merge driver (`driver = molde snapshot --output %A`). |
+| 2 | **`molde snapshot --check`** ✅ **done** | CI gate §9.4; lets devs detect a stale snapshot before pushing. | Same command, `--check` exits non-zero when the on-disk snapshot drifted from the models. |
 | 3 | **`molde verify`** (drift check) | One-step CI gate §9.3 and local "is my DB in sync with the model?" Answers the question `sync --dry-run` approximates today. | Compare a target DB's live structure to the model (reuse `sync`'s reader + `migrate`'s diff); report drift, exit non-zero in `--check`. |
 | 4 | **`molde up`** | Collapses the daily catch-up (§5.1) into one command: `git`-aware apply **or** sync-from-trunk + drift report. | Thin orchestration over `apply`/`sync` + `verify`. |
 | 5 | **`molde fresh`** | Encourages the "rebuild is cheap" convention (§10.5). | Drop/recreate local DB + `apply` all. |
 | 6 | **`molde init-team`** | One-shot setup of `.gitattributes` merge driver + sample CI. Lowers adoption cost for a large team. | Writes the merge-driver config and a CI template. |
 | 7 | **Stale help text** | `molde apply --provider` help still says "sqlite \| postgres" but 4 engines exist. | Trivial copy fix. |
 
-**Recommended build order:** 1 → 2 → 3, because the snapshot merge driver plus
-the two CI checks deliver almost all of the conflict-minimization value. Items
-4–6 are ergonomics; item 7 is a one-line cleanup.
+**Build order:** items 1–2 are **done** (this is the bulk of the
+conflict-minimization value). Next is item 3 (`molde verify`) to complete the CI
+gates; items 4–6 are ergonomics; item 7 is a one-line cleanup.
 
 ---
 

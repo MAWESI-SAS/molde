@@ -36,6 +36,9 @@ enum Commands {
     /// Create a migration from the diff between the models and the snapshot.
     Migrate(commands::migrate::MigrateArgs),
 
+    /// Regenerate (or verify with --check) the migration snapshot from the models.
+    Snapshot(commands::snapshot::SnapshotArgs),
+
     /// Apply pending migrations to the database (or roll back with `--to`).
     Apply(commands::apply::ApplyArgs),
 
@@ -59,6 +62,7 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Pull(args) => commands::pull::run(args),
         Commands::Migrate(args) => commands::migrate::migrate(args),
+        Commands::Snapshot(args) => commands::snapshot::run(args),
         Commands::Apply(args) => commands::apply::run(args),
         Commands::Sync(args) => commands::sync::run(args),
         Commands::Status(args) => commands::migrate::status(args),

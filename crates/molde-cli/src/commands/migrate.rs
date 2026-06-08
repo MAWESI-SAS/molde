@@ -133,7 +133,7 @@ fn resolve_name(name: Option<String>, no_input: bool) -> anyhow::Result<String> 
 }
 
 /// Read every `.model` file in a directory and parse them into an IR model.
-fn load_model_dir(dir: &Path) -> anyhow::Result<DatabaseModel> {
+pub(crate) fn load_model_dir(dir: &Path) -> anyhow::Result<DatabaseModel> {
     let mut files: Vec<(String, String)> = Vec::new();
     let entries = std::fs::read_dir(dir)
         .with_context(|| format!("reading the models directory {}", dir.display()))?;

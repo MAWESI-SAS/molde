@@ -19,12 +19,18 @@ pub enum SnapshotError {
     UnsupportedFormat { found: u32, supported: u32 },
 }
 
-/// Serializes the model to JSON with stable indentation (normalizes before writing).
-pub fn save(model: &DatabaseModel, path: impl AsRef<Path>) -> Result<(), SnapshotError> {
+/// Serializes the model to its canonical snapshot JSON (normalizes first, stable
+/// indentation). This is the single source of the snapshot's on-disk form, so
+/// callers that regenerate or verify a snapshot produce byte-identical output.
+pub fn to_json(model: &DatabaseModel) -> Result<String, SnapshotError> {
     let mut normalized = model.clone();
     normalized.normalize();
-    let json = serde_json::to_string_pretty(&normalized)?;
-    std::fs::write(path, json)?;
+    Ok(serde_json::to_string_pretty(&normalized)?)
+}
+
+/// Serializes the model to JSON with stable indentation (normalizes before writing).
+pub fn save(model: &DatabaseModel, path: impl AsRef<Path>) -> Result<(), SnapshotError> {
+    std::fs::write(path, to_json(model)?)?;
     Ok(())
 }
 
