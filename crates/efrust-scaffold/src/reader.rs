@@ -1,8 +1,8 @@
 //! Lectura del esquema de una base de datos existente → [`DatabaseModel`].
 //!
 //! Específico por motor: SQLite usa `PRAGMA`, PostgreSQL usa `information_schema`.
-//! Produce el mismo IR que el sidecar, de modo que el resto del sistema (codegen,
-//! diff) es agnóstico del origen.
+//! Produce el mismo IR ([`DatabaseModel`]) que el parser del lenguaje EFM, de modo
+//! que el resto del sistema (emisión `.model`, diff) es agnóstico del origen.
 
 use std::collections::BTreeMap;
 

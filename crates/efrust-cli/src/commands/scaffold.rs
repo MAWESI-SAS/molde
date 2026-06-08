@@ -1,12 +1,10 @@
-//! `efrust scaffold` — database-first. Emite archivos `.model` (lenguaje EFM)
-//! por defecto, o C# legacy con `--format csharp`.
+//! `efrust scaffold` — database-first: BD → archivos `.model` (lenguaje EFM).
 
 use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::Args;
 use efrust_providers::Provider;
-use efrust_scaffold::CodegenOptions;
 
 #[derive(Args)]
 pub struct ScaffoldArgs {
@@ -23,21 +21,9 @@ pub struct ScaffoldArgs {
     #[arg(long)]
     pub schema: Option<String>,
 
-    /// Formato de salida: `model` (lenguaje EFM, por defecto) | `csharp` (legacy).
-    #[arg(long, default_value = "model")]
-    pub format: String,
-
-    /// Directorio de salida. Por defecto `models` (EFM) o `Models` (C#).
-    #[arg(long)]
-    pub output_dir: Option<PathBuf>,
-
-    /// Namespace para las clases C# (solo `--format csharp`).
-    #[arg(long, default_value = "App.Data")]
-    pub namespace: String,
-
-    /// Nombre de la clase del DbContext C# (solo `--format csharp`).
-    #[arg(long, default_value = "AppDbContext")]
-    pub context: String,
+    /// Directorio de salida para los archivos `.model`.
+    #[arg(long, default_value = "models")]
+    pub output_dir: PathBuf,
 
     /// Sobrescribe archivos existentes en el directorio de salida.
     #[arg(long)]
@@ -57,70 +43,28 @@ pub fn run(args: ScaffoldArgs) -> anyhow::Result<()> {
         .build()
         .context("creando el runtime async")?;
 
-    // (nombre_relativo, contenido) independiente del formato.
-    let (files, default_dir): (Vec<(String, String)>, &str) = match args.format.as_str() {
-        "model" | "efm" => {
-            let mf = runtime.block_on(async {
-                efrust_scaffold::build_model_files(
-                    &args.connection,
-                    provider,
-                    args.schema.as_deref(),
-                )
-                .await
-                .context("leyendo el esquema de la base de datos")
-            })?;
-            (
-                mf.into_iter().map(|f| (f.name, f.contents)).collect(),
-                "models",
-            )
-        }
-        "csharp" | "cs" => {
-            let opts = CodegenOptions {
-                namespace: args.namespace.clone(),
-                context_name: args.context.clone(),
-                provider,
-            };
-            let gf = runtime.block_on(async {
-                efrust_scaffold::build_files(
-                    &args.connection,
-                    provider,
-                    args.schema.as_deref(),
-                    &opts,
-                )
-                .await
-                .context("leyendo el esquema de la base de datos")
-            })?;
-            (
-                gf.into_iter()
-                    .map(|f| (f.relative_path, f.contents))
-                    .collect(),
-                "Models",
-            )
-        }
-        other => {
-            anyhow::bail!("formato no soportado: '{other}' (usa model | csharp)");
-        }
-    };
+    let files = runtime.block_on(async {
+        efrust_scaffold::build_model_files(&args.connection, provider, args.schema.as_deref())
+            .await
+            .context("leyendo el esquema de la base de datos")
+    })?;
 
     if files.is_empty() {
         println!("No se encontraron tablas para generar.");
         return Ok(());
     }
 
-    let output_dir = args
-        .output_dir
-        .unwrap_or_else(|| PathBuf::from(default_dir));
-    std::fs::create_dir_all(&output_dir)
-        .with_context(|| format!("creando el directorio {}", output_dir.display()))?;
+    std::fs::create_dir_all(&args.output_dir)
+        .with_context(|| format!("creando el directorio {}", args.output_dir.display()))?;
 
     let mut written = 0;
-    for (name, contents) in &files {
-        let path = output_dir.join(name);
+    for file in &files {
+        let path = args.output_dir.join(&file.name);
         if path.exists() && !args.force {
             tracing::warn!("omitido (ya existe, usa --force): {}", path.display());
             continue;
         }
-        std::fs::write(&path, contents)
+        std::fs::write(&path, &file.contents)
             .with_context(|| format!("escribiendo {}", path.display()))?;
         println!("  ✔ {}", path.display());
         written += 1;
@@ -128,7 +72,7 @@ pub fn run(args: ScaffoldArgs) -> anyhow::Result<()> {
 
     println!(
         "Listo: {written} archivo(s) generado(s) en {}.",
-        output_dir.display()
+        args.output_dir.display()
     );
     Ok(())
 }

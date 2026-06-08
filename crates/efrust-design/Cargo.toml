@@ -5,12 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-description = "Orquestación model-first: invocar el sidecar y autorar migraciones"
+description = "Autoría model-first de migraciones (diff contra snapshot)"
 
 [dependencies]
 efrust-core = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 
 [dev-dependencies]
 efrust-providers = { workspace = true }

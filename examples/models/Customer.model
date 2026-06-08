@@ -1,0 +1,8 @@
+Customer
+  fields:
+    Id: int pk
+    Name: string maxlen=200
+    Email: string? unique maxlen=320
+  seed:
+    - {Id: 1, Name: "ACME", Email: "acme@example.com"}
+    - {Id: 2, Name: "Globex", Email: ~}

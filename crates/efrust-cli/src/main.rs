@@ -1,10 +1,9 @@
-//! efrust — CLI estilo `dotnet ef` en Rust.
+//! efrust — gestión de esquema en Rust sobre el lenguaje de modelos EFM.
 //!
-//! Fase 0: estructura de comandos y cableado del pipeline. La lógica de cada
-//! comando está como esqueleto (`todo!`-ish con mensajes) y se completa por fases:
-//! - Fase 1: `database update`
-//! - Fase 2: `dbcontext scaffold`
-//! - Fase 4: `migrations add` (requiere el sidecar de Fase 3)
+//! Comandos:
+//! - `scaffold`        BD → archivos `.model`
+//! - `migrations add`  `.model` → migración (diff contra el snapshot)
+//! - `database update` aplica/revierte migraciones contra la BD
 
 use clap::{Parser, Subcommand};
 

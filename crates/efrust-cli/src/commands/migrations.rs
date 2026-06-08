@@ -1,7 +1,7 @@
 //! `efrust migrations ...` — add / list / remove.
 //!
-//! `add` toma el modelo de los archivos `.model` (lenguaje EFM) por defecto;
-//! como modo legacy, con `--assembly` lo obtiene del sidecar .NET.
+//! `add` toma el modelo de los archivos `.model` (lenguaje EFM), calcula el diff
+//! contra el snapshot y escribe la migración.
 
 use std::path::{Path, PathBuf};
 
@@ -9,7 +9,6 @@ use anyhow::Context;
 use clap::Args;
 use efrust_core::{migration, DatabaseModel};
 use efrust_design::author::{self, AddOutcome};
-use efrust_design::sidecar::{self, SidecarOptions};
 use time::OffsetDateTime;
 
 #[derive(Args)]
@@ -20,23 +19,6 @@ pub struct AddArgs {
     /// Directorio con los archivos `.model` (fuente del modelo).
     #[arg(long, default_value = "models")]
     pub from_models: PathBuf,
-
-    /// [legacy] Assembly .NET (.dll con el DbContext). Si se indica, el modelo se
-    /// obtiene del sidecar en vez de los `.model`.
-    #[arg(long)]
-    pub assembly: Option<PathBuf>,
-
-    /// [legacy] Ruta al `efrust-sidecar.dll` (variable `EFRUST_SIDECAR`).
-    #[arg(long, env = "EFRUST_SIDECAR")]
-    pub sidecar: Option<PathBuf>,
-
-    /// [legacy] Ejecutable de .NET.
-    #[arg(long, default_value = "dotnet")]
-    pub dotnet: String,
-
-    /// [legacy] Nombre del DbContext (si el proyecto tiene varios).
-    #[arg(long)]
-    pub context: Option<String>,
 
     /// Directorio donde se guardan las migraciones.
     #[arg(long, default_value = "migrations")]
@@ -69,23 +51,8 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
         .clone()
         .unwrap_or_else(|| args.output_dir.join("snapshot.json"));
 
-    // 1. Obtener el modelo actual: `.model` (por defecto) o sidecar (legacy).
-    let model = match &args.assembly {
-        Some(assembly) => {
-            let sidecar_dll = args.sidecar.as_ref().context(
-                "modo sidecar: indica --sidecar o la variable EFRUST_SIDECAR junto a --assembly",
-            )?;
-            tracing::info!("obteniendo el modelo desde el sidecar…");
-            sidecar::fetch_model(&SidecarOptions {
-                dotnet: &args.dotnet,
-                sidecar_dll,
-                assembly,
-                context: args.context.as_deref(),
-            })
-            .context("ejecutando el sidecar")?
-        }
-        None => load_model_dir(&args.from_models)?,
-    };
+    // 1. Obtener el modelo actual desde los archivos `.model`.
+    let model = load_model_dir(&args.from_models)?;
 
     // 2. Generar el identificador de la migración (timestamp UTC + nombre).
     let id = format!("{}_{}", utc_timestamp(), args.name);

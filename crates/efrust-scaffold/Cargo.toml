@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-description = "Database-first: lectura de esquema y generación de C# para efrust"
+description = "Database-first: lectura de esquema y emisión de archivos .model"
 
 [features]
 default = ["tls-rustls"]
@@ -17,7 +17,6 @@ tls-native-tls = ["sqlx/tls-native-tls"]
 efrust-core = { workspace = true }
 efrust-providers = { workspace = true }
 efrust-lang = { workspace = true }
-serde_json = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

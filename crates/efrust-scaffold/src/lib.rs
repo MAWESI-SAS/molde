@@ -1,39 +1,18 @@
 //! # efrust-scaffold
 //!
 //! Database-first: lee el esquema de una base de datos existente y genera los
-//! modelos C# + `DbContext`.
+//! archivos `.model` (lenguaje EFM).
 //!
 //! - [`reader`]: catálogo de la BD → [`efrust_core::DatabaseModel`] (por motor).
-//! - [`codegen`]: modelo → archivos C# (puro, sin BD).
-//! - [`csharp`]: utilidades de mapeo de tipos y nombres.
-//!
-//! Salida nueva: archivos `.model` (lenguaje EFM) vía [`build_model_files`]. El
-//! C# queda como salida legacy ([`build_files`]) hasta su retiro.
+//! - [`build_model_files`]: modelo canonizado → archivos `.model`.
 
-pub mod codegen;
-pub mod csharp;
 pub mod reader;
 
-pub use codegen::{CodegenOptions, GeneratedFile};
 pub use efrust_lang::ModelFile;
 pub use reader::ReadError;
 
-use efrust_core::model::DatabaseModel;
+use efrust_core::model::{Column, DatabaseModel};
 use efrust_providers::Provider;
-
-/// Pipeline completo: conecta, lee el modelo y genera los archivos C#.
-pub async fn build_files(
-    url: &str,
-    provider: Provider,
-    schema: Option<&str>,
-    opts: &CodegenOptions,
-) -> Result<Vec<GeneratedFile>, ReadError> {
-    let model = reader::read_model(url, provider, schema).await?;
-    // El provider de origen manda sobre el de las opciones (idioms por motor).
-    let mut opts = opts.clone();
-    opts.provider = provider;
-    Ok(codegen::generate(&model, &opts))
-}
 
 /// Pipeline database-first hacia el lenguaje EFM: conecta, lee el modelo, lo
 /// canoniza para una salida limpia y emite los archivos `.model`.
@@ -59,7 +38,7 @@ pub fn canonicalize_for_models(model: &mut DatabaseModel) {
             t.schema = None;
         }
         for c in &mut t.columns {
-            if c.clr_type.is_some() && codegen::exotic_store_type(c).is_none() {
+            if c.clr_type.is_some() && exotic_store_type(c).is_none() {
                 c.store_type = None;
             }
             // precision/scale solo aplican a decimales; en enteros, Postgres
@@ -74,6 +53,70 @@ pub fn canonicalize_for_models(model: &mut DatabaseModel) {
                 fk.principal_schema = None;
             }
         }
+    }
+}
+
+/// Devuelve el `store_type` solo si NO es convencional para su tipo lógico (jsonb,
+/// arrays, citext, vector(N), tsvector, inet…). Los tipos convencionales
+/// (varchar, integer, numeric, uuid, timestamp…) se derivan del tipo lógico al
+/// aplicar, así que en el `.model` se omiten.
+fn exotic_store_type(col: &Column) -> Option<&str> {
+    let st = col.store_type.as_deref()?;
+    let base = st
+        .split('(')
+        .next()
+        .unwrap_or(st)
+        .trim()
+        .to_ascii_lowercase();
+    const CONVENTIONAL: &[&str] = &[
+        "character varying",
+        "varchar",
+        "text",
+        "char",
+        "character",
+        "nvarchar",
+        "nchar",
+        "integer",
+        "int",
+        "bigint",
+        "smallint",
+        "tinyint",
+        "int2",
+        "int4",
+        "int8",
+        "boolean",
+        "bool",
+        "bit",
+        "real",
+        "double precision",
+        "float",
+        "double",
+        "numeric",
+        "decimal",
+        "money",
+        "smallmoney",
+        "uuid",
+        "uniqueidentifier",
+        "date",
+        "timestamp",
+        "timestamp without time zone",
+        "timestamp with time zone",
+        "timestamptz",
+        "datetime",
+        "datetime2",
+        "datetimeoffset",
+        "time",
+        "time without time zone",
+        "bytea",
+        "varbinary",
+        "binary",
+        "blob",
+        "image",
+    ];
+    if CONVENTIONAL.contains(&base.as_str()) {
+        None
+    } else {
+        Some(st)
     }
 }
 
@@ -227,17 +270,18 @@ mod tests {
             .expect("índice leído");
         assert!(idx.is_unique);
 
-        // 3. Generar C#.
-        let files = codegen::generate(&model, &CodegenOptions::default());
+        // 3. Emitir `.model` (canonizado) y comprobar la salida EFM.
+        let mut canon = model.clone();
+        canonicalize_for_models(&mut canon);
+        let files = efrust_lang::emit_project(&canon);
         let entity = &files
             .iter()
-            .find(|f| f.relative_path == "Customer.cs")
+            .find(|f| f.name == "Customer.model")
             .unwrap()
             .contents;
-        assert!(entity.contains("public partial class Customer"));
-        assert!(entity.contains("public long Id { get; set; }")); // INTEGER → long en SQLite
-        assert!(entity.contains("public string Name { get; set; } = null!;"));
-        assert!(entity.contains("public string? Email { get; set; }"));
+        assert!(entity.contains("Id: long")); // INTEGER → long en SQLite
+        assert!(entity.contains("Name: string"));
+        assert!(entity.contains("Email: string? unique"));
 
         let _ = std::fs::remove_file(&path);
     }

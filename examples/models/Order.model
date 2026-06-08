@@ -1,0 +1,7 @@
+Order
+  fields:
+    Id: int pk identity
+    CustomerId: int
+    Total: decimal precision=18,2
+  belongs-to:
+    Customer: {fk: CustomerId, references: Customer.Id, onDelete: cascade}
