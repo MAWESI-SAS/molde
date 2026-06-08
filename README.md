@@ -62,6 +62,7 @@ molde (CLI, Rust)
 | `apply` (apply migrations) | ✅ | ✅ | ✅ | ✅ (tiberius) |
 | `migrate` / `undo` / `status` | ✅ | ✅ | ✅ | ✅ |
 | `pull` (DB → `.model`) | ✅ | ✅ | ✅ | ✅ (tiberius) |
+| `sync` (additive live DB → DB) | ✅ | ✅ | ✅ | ✅ (tiberius) |
 | Search / full-text (pull + round-trip) | ✅ pgvector+tsvector+triggers | ✅ FULLTEXT+generated | — | ✅ computed PERSISTED · FTS best-effort |
 
 > SQLite: FKs are declared inline in `CREATE TABLE`; column type changes and

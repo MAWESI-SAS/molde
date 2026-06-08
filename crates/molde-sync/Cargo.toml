@@ -17,4 +17,8 @@ tls-native-tls = ["sqlx/tls-native-tls"]
 anyhow = { workspace = true }
 async-trait = "0.1"
 sqlx = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
+# SQL Server (TDS) — tiberius is outside sqlx's Any driver; rustls is fine for
+# SQL Server (self-signed certs are accepted via TrustServerCertificate).
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls"] }
+tokio-util = { version = "0.7", features = ["compat"] }
