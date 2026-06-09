@@ -1072,7 +1072,7 @@ dependencies = [
 
 [[package]]
 name = "molde-cli"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -1095,7 +1095,7 @@ dependencies = [
 
 [[package]]
 name = "molde-core"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -1104,7 +1104,7 @@ dependencies = [
 
 [[package]]
 name = "molde-design"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "molde-core",
  "molde-providers",
@@ -1113,7 +1113,7 @@ dependencies = [
 
 [[package]]
 name = "molde-lang"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "molde-core",
  "serde_json",
@@ -1122,7 +1122,7 @@ dependencies = [
 
 [[package]]
 name = "molde-lsp"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "dashmap 6.2.1",
  "molde-core",
@@ -1134,7 +1134,7 @@ dependencies = [
 
 [[package]]
 name = "molde-migrate"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "molde-core",
  "molde-providers",
@@ -1148,7 +1148,7 @@ dependencies = [
 
 [[package]]
 name = "molde-providers"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "molde-core",
  "serde_json",
@@ -1158,7 +1158,7 @@ dependencies = [
 
 [[package]]
 name = "molde-scaffold"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "molde-core",
  "molde-lang",
@@ -1173,7 +1173,7 @@ dependencies = [
 
 [[package]]
 name = "molde-sync"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "anyhow",
  "async-trait",

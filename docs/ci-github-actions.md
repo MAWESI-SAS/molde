@@ -52,7 +52,7 @@ jobs:
       - name: Install molde
         run: |
           curl -L -o molde.tar.gz \
-            https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.2-x86_64-unknown-linux-musl.tar.gz
+            https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.3-x86_64-unknown-linux-musl.tar.gz
           tar xzf molde.tar.gz
           sudo install molde-*/molde /usr/local/bin/molde
           molde --version || molde --help | head -1
@@ -88,7 +88,7 @@ jobs:
 
 ### Notes & customization
 
-- **Pin the version.** The example downloads `v0.0.2`; bump it (or build from
+- **Pin the version.** The example downloads `v0.0.3`; bump it (or build from
   source with `cargo install`) as you upgrade. Other prebuilt targets are on the
   [releases page](https://github.com/MAWESI-SAS/molde/releases/latest).
 - **Scope lint to the PR.** By default every migration is linted. To check only
