@@ -199,6 +199,10 @@ molde apply --connection "$DATABASE_URL" --to 0              # roll back everyth
 molde apply --connection "$DATABASE_URL" --to InitialCreate # up/down to a point
 ```
 
+molde records applied migrations in an `__EFMigrationsHistory` table and applies
+each one (DDL + history row) in a single transaction. See
+[migrations.md](migrations.md) for the details.
+
 ---
 
 ## `molde db`

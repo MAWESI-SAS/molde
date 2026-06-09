@@ -15,6 +15,8 @@ Reference and guides for molde. New here? Start with the
   examples. (Or run `molde <command> --help`.)
 - **[molde-language-spec.md](molde-language-spec.md)** — the precise `.model`
   language specification: grammar, types, facets, and the full IR mapping.
+- **[migrations.md](migrations.md)** — how molde tracks applied migrations in the
+  database (`__EFMigrationsHistory`), atomicity, rollback, and EF interop.
 - **[model-ir.md](model-ir.md)** — the intermediate representation
   (`molde_core::DatabaseModel`) that the language, readers, and diff all share.
 
