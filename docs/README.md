@@ -27,6 +27,9 @@ Reference and guides for molde. New here? Start with the
 - **[team-database-workflow.md](team-database-workflow.md)** — running molde in a
   large team where everyone has their own local database: `.model` as the source
   of truth, the snapshot merge driver, and keeping local DBs current.
+- **[ci-github-actions.md](ci-github-actions.md)** — gate pull requests with
+  `molde ci`: a ready-to-copy GitHub Actions workflow that runs lint + snapshot +
+  verify and posts the report as a PR comment.
 
 ## Background
 

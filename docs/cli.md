@@ -13,6 +13,7 @@ molde [OPTIONS] <COMMAND>
 - Database-first: [`pull`](#molde-pull)
 - Migrations: [`migrate`](#molde-migrate) · [`status`](#molde-status) ·
   [`undo`](#molde-undo) · [`snapshot`](#molde-snapshot) · [`lint`](#molde-lint)
+- CI gate: [`ci`](#molde-ci)
 - Apply: [`apply`](#molde-apply) · [`db`](#molde-db)
 - Drift & sync: [`verify`](#molde-verify) · [`sync`](#molde-sync) ·
   [`up`](#molde-up) · [`fresh`](#molde-fresh)
@@ -171,6 +172,36 @@ Selection precedence: `FILE` args → `--since` → `--all` → latest migration
 molde lint                       # the latest migration
 molde lint --since 20260101000000_Base --strict
 molde lint migrations/20260608_AddEmail.json
+```
+
+---
+
+## `molde ci`
+
+Run the pull-request checks in one go and print a Markdown report (lint +
+snapshot, plus an optional from-scratch verify). Exits non-zero if any check
+fails — that's the merge gate. See
+[Gating pull requests](ci-github-actions.md) for a ready-to-copy workflow.
+
+```
+molde ci [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--from-models <FROM_MODELS>` | Directory with the `.model` files. Default: `models`. |
+| `--migrations-dir <MIGRATIONS_DIR>` | Directory of migrations. Default: `migrations`. |
+| `--since <ID>` | Lint only migrations newer than this id. By default every migration is linted. |
+| `--strict` | Treat lint warnings as failures too, not only destructive changes. |
+| `-c, --connection <CONNECTION>` | Ephemeral database to apply-from-scratch and verify. Omit to skip the verify check. Defaults to `DATABASE_URL`. |
+| `--provider <PROVIDER>` | Engine for `--connection`; inferred from the URL if omitted. |
+| `--schema <SCHEMA>` | Schema to read for verify (PostgreSQL only). Defaults to `public`. |
+| `--report <PATH>` | Also write the Markdown report to this file (to post as a PR comment). |
+
+```bash
+molde ci                                              # lint + snapshot (no DB)
+molde ci --connection "$DATABASE_URL" --report ci.md  # + from-scratch verify
+molde ci --strict --since 20260101000000_Base         # PR-scoped, warnings fail too
 ```
 
 ---

@@ -42,6 +42,9 @@ enum Commands {
     /// Statically check migrations for risky/destructive changes.
     Lint(commands::lint::LintArgs),
 
+    /// Run pull-request checks (lint + snapshot + optional verify) → Markdown report.
+    Ci(commands::ci::CiArgs),
+
     /// Apply pending migrations to the database (or roll back with `--to`).
     Apply(commands::apply::ApplyArgs),
 
@@ -82,6 +85,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Migrate(args) => commands::migrate::migrate(args),
         Commands::Snapshot(args) => commands::snapshot::run(args),
         Commands::Lint(args) => commands::lint::run(args),
+        Commands::Ci(args) => commands::ci::run(args),
         Commands::Apply(args) => commands::apply::run(args),
         Commands::Sync(args) => commands::sync::run(args),
         Commands::Verify(args) => commands::verify::run(args),

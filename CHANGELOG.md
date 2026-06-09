@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `molde ci`: one command for pull-request gating — runs lint + snapshot, plus an
+  optional from-scratch `verify` against an ephemeral database, and emits a
+  Markdown report suitable for posting as a PR comment. Exits non-zero if any
+  check fails. See `docs/ci-github-actions.md` for a ready-to-copy workflow.
+
 ## [0.0.1] - 2026-06-09
 
 Initial public release.

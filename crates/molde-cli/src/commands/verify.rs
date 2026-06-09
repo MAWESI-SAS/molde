@@ -83,23 +83,10 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
         args.schema.as_deref(),
     ));
     sp.finish_and_clear();
-    let mut live = live?;
-    let mut desired = desired;
+    let live = live?;
 
-    // Compare column types by what the *target engine* actually stores, so
-    // round-trip-lossy distinctions don't read as drift. On SQLite, e.g., both
-    // `int` and `long` store as `INTEGER` and `varchar(n)` loses its length, so
-    // an in-sync database would otherwise show spurious `AlterColumn`s. Mapping
-    // both sides through the engine's `store_type_for` cancels that while still
-    // catching genuine type changes (`text` vs `integer`).
     let generator = provider.generator();
-    canonicalize_types(&mut desired, generator.as_ref());
-    canonicalize_types(&mut live, generator.as_ref());
-
-    // diff(live → desired): operations that would bring the DB up to the model.
-    // Empty ⇒ the database matches the model.
-    let operations = diff(&live, &desired);
-    let drift: Vec<&Operation> = operations.iter().filter(|op| is_schema_drift(op)).collect();
+    let drift = drift_items(&live, &desired, generator.as_ref());
 
     if drift.is_empty() {
         ui::ok("the database is in sync with the model. No drift.");
@@ -117,9 +104,46 @@ pub fn run(args: VerifyArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A single drift finding: a structural difference between the database and the
+/// model, with its direction and a human-readable label.
+pub struct DriftItem {
+    pub direction: Direction,
+    pub label: String,
+}
+
+/// Compute the structural drift between a `live` (introspected) model and the
+/// `desired` (authored) model, judged on what the target engine actually stores.
+/// Empty result ⇒ the database matches the model. Reused by `molde ci`.
+pub fn drift_items(
+    live: &DatabaseModel,
+    desired: &DatabaseModel,
+    generator: &dyn SqlGenerator,
+) -> Vec<DriftItem> {
+    // Compare column types by what the *target engine* actually stores, so
+    // round-trip-lossy distinctions don't read as drift. On SQLite, e.g., both
+    // `int` and `long` store as `INTEGER` and `varchar(n)` loses its length, so
+    // an in-sync database would otherwise show spurious `AlterColumn`s. Mapping
+    // both sides through the engine's `store_type_for` cancels that while still
+    // catching genuine type changes (`text` vs `integer`).
+    let mut live = live.clone();
+    let mut desired = desired.clone();
+    canonicalize_types(&mut live, generator);
+    canonicalize_types(&mut desired, generator);
+
+    // diff(live → desired): operations that would bring the DB up to the model.
+    diff(&live, &desired)
+        .iter()
+        .filter(|op| is_schema_drift(op))
+        .map(|op| {
+            let (direction, label) = classify(op);
+            DriftItem { direction, label }
+        })
+        .collect()
+}
+
 /// Reads the live database and renders it through the authored-`.model` pipeline
-/// so it is directly comparable to the desired model.
-async fn read_live_model(
+/// so it is directly comparable to the desired model. Reused by `molde ci`.
+pub async fn read_live_model(
     connection: &str,
     provider: Provider,
     schema: Option<&str>,
@@ -164,32 +188,40 @@ fn canonicalize_types(model: &mut DatabaseModel, generator: &dyn SqlGenerator) {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-enum Direction {
+pub enum Direction {
     MissingInDb,
     ExtraInDb,
     Differs,
 }
 
+impl Direction {
+    /// Human heading for the group of drift items in this direction.
+    pub fn heading(self) -> &'static str {
+        match self {
+            Direction::MissingInDb => "missing in database (model is ahead — apply migrations?)",
+            Direction::ExtraInDb => "extra in database (not in the model)",
+            Direction::Differs => "differs between database and model",
+        }
+    }
+}
+
 /// Print the drift grouped by direction.
-fn report(drift: &[&Operation]) {
+fn report(drift: &[DriftItem]) {
     ui::warn(format!("{} drift item(s) found:", drift.len()));
-    for (dir, label) in [
-        (
-            Direction::MissingInDb,
-            "missing in database (model is ahead — apply migrations?)",
-        ),
-        (Direction::ExtraInDb, "extra in database (not in the model)"),
-        (Direction::Differs, "differs between database and model"),
+    for dir in [
+        Direction::MissingInDb,
+        Direction::ExtraInDb,
+        Direction::Differs,
     ] {
-        let items: Vec<String> = drift
+        let items: Vec<&str> = drift
             .iter()
-            .filter(|op| classify(op).0 == dir)
-            .map(|op| classify(op).1)
+            .filter(|d| d.direction == dir)
+            .map(|d| d.label.as_str())
             .collect();
         if items.is_empty() {
             continue;
         }
-        ui::info(format!("{label}:"));
+        ui::info(format!("{}:", dir.heading()));
         for item in items {
             ui::info(format!("  - {item}"));
         }
