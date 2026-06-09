@@ -358,8 +358,17 @@ seed:
 ```
 
 molde turns seed rows into `INSERT`/`UPDATE`/`DELETE` as the data changes between
-migrations. Seed rows describe **data**, so they're intentionally ignored by the
-schema drift check (`molde verify`).
+migrations — an upsert keyed by the **primary key**: add a row → `INSERT`, change
+a value on an existing key → `UPDATE`, remove a row → `DELETE`. So every seed row
+must include its primary key. Seed rows describe **data**, so they're
+intentionally ignored by the schema drift check (`molde verify`).
+
+> **Seeds live with their table — there are no separate seed files.** Put the
+> `seed:` block in the entity's own `.model` file. Each `.model` file is one
+> table, so a second file repeating the same entity header just to hold seeds
+> would define a *duplicate* table, not add data to the existing one.
+> (Separate/per-environment seed files and seeding from CSV/JSON are on the
+> roadmap, not yet supported.)
 
 ---
 
