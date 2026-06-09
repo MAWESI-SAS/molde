@@ -116,6 +116,12 @@ pub struct Table {
     /// column → JSON value. Materialized as `INSERT`/`UPDATE`/`DELETE`.
     #[serde(default)]
     pub seed_data: Vec<std::collections::BTreeMap<String, serde_json::Value>>,
+    /// Columns used to match seed rows across migrations (the natural key),
+    /// instead of the primary key. Lets a DB-generated PK (e.g. a `guid` with a
+    /// `gen_random_uuid()` default) be omitted from seed rows while still
+    /// producing incremental `INSERT`/`UPDATE`/`DELETE`. Empty ⇒ match by PK.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub seed_key: Vec<String>,
 }
 
 impl Table {

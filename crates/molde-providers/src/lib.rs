@@ -122,6 +122,7 @@ mod tests {
             indexes: vec![],
             triggers: vec![],
             seed_data: vec![],
+            seed_key: vec![],
         }
     }
 

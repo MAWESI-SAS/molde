@@ -123,6 +123,7 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
         indexes: Vec::new(),
         triggers: Vec::new(),
         seed_data: Vec::new(),
+        seed_key: Vec::new(),
     };
 
     let mut builds: Vec<ColumnBuild> = Vec::new();
@@ -163,6 +164,11 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
             "seed" => {
                 for row in &section.children {
                     table.seed_data.push(parse_seed_row(row)?);
+                }
+            }
+            "seed-key" => {
+                if let Value::Array(arr) = parse_value(&section.inline, section.line)? {
+                    table.seed_key = arr.iter().filter_map(value_str).collect();
                 }
             }
             "subtypes" => subtypes_node = Some(section),

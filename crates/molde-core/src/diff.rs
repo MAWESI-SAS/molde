@@ -331,20 +331,26 @@ fn seed_key(
 }
 
 /// Diff of seed data (`HasData`): generates Insert/Update/Delete per row,
-/// matching by primary key.
+/// matching by the seed match key — the table's explicit `seed_key` (a natural
+/// key, so a DB-generated PK can be omitted from rows) when set, otherwise the
+/// primary key.
 fn diff_seed_data(old_t: &Table, new_t: &Table, ops: &mut Vec<Operation>) {
-    let pk_cols = new_t
-        .primary_key
-        .as_ref()
-        .map(|p| p.columns.clone())
-        .unwrap_or_default();
+    let key_cols = if !new_t.seed_key.is_empty() {
+        new_t.seed_key.clone()
+    } else {
+        new_t
+            .primary_key
+            .as_ref()
+            .map(|p| p.columns.clone())
+            .unwrap_or_default()
+    };
 
     for new_row in &new_t.seed_data {
-        let key = seed_key(new_row, &pk_cols);
+        let key = seed_key(new_row, &key_cols);
         match old_t
             .seed_data
             .iter()
-            .find(|r| seed_key(r, &pk_cols) == key)
+            .find(|r| seed_key(r, &key_cols) == key)
         {
             None => ops.push(Operation::InsertData {
                 schema: new_t.schema.clone(),
@@ -354,7 +360,7 @@ fn diff_seed_data(old_t: &Table, new_t: &Table, ops: &mut Vec<Operation>) {
             Some(old_row) if old_row != new_row => {
                 let values = new_row
                     .iter()
-                    .filter(|(c, _)| !pk_cols.contains(c))
+                    .filter(|(c, _)| !key_cols.contains(c))
                     .map(|(c, v)| (c.clone(), v.clone()))
                     .collect();
                 ops.push(Operation::UpdateData {
@@ -368,8 +374,12 @@ fn diff_seed_data(old_t: &Table, new_t: &Table, ops: &mut Vec<Operation>) {
         }
     }
     for old_row in &old_t.seed_data {
-        let key = seed_key(old_row, &pk_cols);
-        if !new_t.seed_data.iter().any(|r| seed_key(r, &pk_cols) == key) {
+        let key = seed_key(old_row, &key_cols);
+        if !new_t
+            .seed_data
+            .iter()
+            .any(|r| seed_key(r, &key_cols) == key)
+        {
             ops.push(Operation::DeleteData {
                 schema: new_t.schema.clone(),
                 table: new_t.name.clone(),
@@ -742,6 +752,70 @@ mod tests {
             indexes: vec![],
             triggers: vec![],
             seed_data: vec![],
+            seed_key: vec![],
+        }
+    }
+
+    fn seed_row(code: &str, name: &str) -> std::collections::BTreeMap<String, serde_json::Value> {
+        let mut m = std::collections::BTreeMap::new();
+        m.insert("Code".to_string(), serde_json::json!(code));
+        m.insert("Name".to_string(), serde_json::json!(name));
+        m
+    }
+
+    fn tenant_with_seed(rows: Vec<std::collections::BTreeMap<String, serde_json::Value>>) -> Table {
+        // Note: rows carry no `Id` — the DB generates it; seeds match by `Code`.
+        let mut t = table("Tenant", &["Id", "Code", "Name"]);
+        t.seed_key = vec!["Code".into()];
+        t.seed_data = rows;
+        t
+    }
+
+    fn model_with(t: Table) -> DatabaseModel {
+        let mut m = DatabaseModel::empty();
+        m.tables.push(t);
+        m
+    }
+
+    #[test]
+    fn seed_key_inserts_only_the_new_row_by_natural_key() {
+        let prev = model_with(tenant_with_seed(vec![seed_row("ACME", "ACME")]));
+        let cur = model_with(tenant_with_seed(vec![
+            seed_row("ACME", "ACME"),
+            seed_row("GLX", "Globex"),
+        ]));
+
+        let inserts: Vec<_> = diff(&prev, &cur)
+            .into_iter()
+            .filter(|o| matches!(o, Operation::InsertData { .. }))
+            .collect();
+        assert_eq!(inserts.len(), 1, "only the new row should be inserted");
+        match &inserts[0] {
+            Operation::InsertData { row, .. } => {
+                assert_eq!(row.get("Code").unwrap(), &serde_json::json!("GLX"));
+                assert!(!row.contains_key("Id"), "Id is left to the DB default");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn seed_key_updates_by_natural_key_excluding_the_key_columns() {
+        let prev = model_with(tenant_with_seed(vec![seed_row("ACME", "ACME")]));
+        let cur = model_with(tenant_with_seed(vec![seed_row("ACME", "ACME Inc")]));
+
+        let updates: Vec<_> = diff(&prev, &cur)
+            .into_iter()
+            .filter(|o| matches!(o, Operation::UpdateData { .. }))
+            .collect();
+        assert_eq!(updates.len(), 1);
+        match &updates[0] {
+            Operation::UpdateData { key, values, .. } => {
+                assert_eq!(key.get("Code").unwrap(), &serde_json::json!("ACME"));
+                assert_eq!(values.get("Name").unwrap(), &serde_json::json!("ACME Inc"));
+                assert!(!values.contains_key("Code"), "the match key is not updated");
+            }
+            _ => unreachable!(),
         }
     }
 

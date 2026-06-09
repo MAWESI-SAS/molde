@@ -304,6 +304,7 @@ mod tests {
             indexes: vec![],
             triggers: vec![],
             seed_data: vec![],
+            seed_key: vec![],
         };
         Migration::new(
             "20260607120000_InitialCreate",

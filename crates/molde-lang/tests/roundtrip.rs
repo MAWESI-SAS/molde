@@ -86,6 +86,7 @@ fn fk_without_index_emits_index_false_and_round_trips() {
         indexes: vec![],
         triggers: vec![],
         seed_data: vec![],
+        seed_key: vec![],
     };
     let emitted = emit_entity(&t, &DatabaseModel::empty());
     assert!(
@@ -172,6 +173,7 @@ fn sample() -> DatabaseModel {
                 ("Email", json!(null)),
             ]),
         ],
+        seed_key: vec![],
     });
 
     // Order
@@ -211,6 +213,7 @@ fn sample() -> DatabaseModel {
         indexes: vec![],
         triggers: vec![],
         seed_data: vec![],
+        seed_key: vec![],
     });
 
     // Document (own schema + native types + computed + dbtype + indexes + trigger)
@@ -273,6 +276,7 @@ fn sample() -> DatabaseModel {
             definition: "CREATE TRIGGER trg_normalize BEFORE INSERT OR UPDATE ON audit.documents\nFOR EACH ROW EXECUTE FUNCTION normalize_body()".into(),
         }],
         seed_data: vec![],
+        seed_key: vec![],
     });
 
     // TenantItem (composite PK with non-conventional name + FK with set_null)
@@ -301,6 +305,7 @@ fn sample() -> DatabaseModel {
         indexes: vec![],
         triggers: vec![],
         seed_data: vec![],
+        seed_key: vec![],
     });
 
     m.normalize();

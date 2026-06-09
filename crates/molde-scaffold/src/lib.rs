@@ -176,6 +176,7 @@ mod tests {
             indexes: vec![],
             triggers: vec![],
             seed_data: vec![],
+            seed_key: vec![],
         });
 
         canonicalize_for_models(&mut m);
@@ -221,6 +222,7 @@ mod tests {
             indexes: vec![],
             triggers: vec![],
             seed_data: vec![],
+            seed_key: vec![],
         };
 
         install_default_drivers();
@@ -307,6 +309,7 @@ mod tests {
             indexes: vec![],
             triggers: vec![],
             seed_data: vec![],
+            seed_key: vec![],
         };
         let mut old = DatabaseModel::empty();
         old.tables.push(person("System.String")); // Age TEXT

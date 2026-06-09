@@ -141,6 +141,10 @@ pub fn emit_entity(t: &Table, _model: &DatabaseModel) -> String {
         }
     }
 
+    if !t.seed_key.is_empty() {
+        let _ = writeln!(s, "  seed-key: [{}]", t.seed_key.join(", "));
+    }
+
     if !t.seed_data.is_empty() {
         let _ = writeln!(s, "  seed:");
         for row in &t.seed_data {

@@ -345,6 +345,20 @@ seed:
 Maps to `Table.seed_data` (a list of column→JSON-value maps). `~` = null.
 The diff materializes them as `INSERT`/`UPDATE`/`DELETE`.
 
+Seed rows are matched across migrations by the **primary key** by default. To
+match by a **natural key** instead — so a database-generated PK (e.g. a `guid`
+with `gen_random_uuid()`) can be omitted from the rows — declare it with
+`seed-key:`:
+
+```
+seed-key: [Code]              # match rows by Code, not by the PK
+seed:
+  - {Code: "ACME", Name: "ACME Inc"}   # no Id; the DB generates it
+```
+
+Maps to `Table.seed_key` (a list of column names; empty ⇒ match by PK). The
+`seed-key` columns should be unique. `UpdateData` excludes the match-key columns.
+
 ---
 
 ## 14. Triggers (per entity)
@@ -416,6 +430,7 @@ raw:
 | `Table.indexes` | `unique` facet or `indexes:` block |
 | `Table.triggers` | `triggers:` |
 | `Table.seed_data` | `seed:` |
+| `Table.seed_key` | `seed-key:` |
 | `Column.name` | field label |
 | `Column.clr_type` | logical type |
 | `Column.store_type` | raw native type or `dbtype=` |

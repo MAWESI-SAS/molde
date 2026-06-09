@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `seed-key:` — match seed rows by a natural key instead of the primary key, so a
+  database-generated PK (e.g. a `guid` with `gen_random_uuid()`) can be omitted
+  from seed rows while still producing incremental `INSERT`/`UPDATE`/`DELETE`.
 - `molde ci`: one command for pull-request gating — runs lint + snapshot, plus an
   optional from-scratch `verify` against an ephemeral database, and emits a
   Markdown report suitable for posting as a PR comment. Exits non-zero if any
