@@ -402,6 +402,12 @@ be **unique** (here `Code` has `unique`) so the match is unambiguous.
 > `seed-key` when you're fine with each environment generating its own key and
 > you'd rather match on a business value.
 
+> **`pull` does not bring seeds or `seed-key` back.** Introspection reads the
+> database *structure* only — it never reads data rows, and `seed-key` isn't a
+> database object — so a model produced by `molde pull` has no `seed:`/`seed-key:`
+> blocks (just like the `owns`/`enum`/`subtypes` shortcuts in §15). Your authored
+> `.model` files remain the source of truth for seed data.
+
 ---
 
 ## 13. Triggers
