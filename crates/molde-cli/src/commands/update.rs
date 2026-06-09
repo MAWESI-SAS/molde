@@ -57,12 +57,32 @@ fn asset_triple() -> String {
     format!("{arch}-{os_part}")
 }
 
-/// `Some("nativetls")` for native-tls builds — used as the asset *identifier* so
-/// `Release::asset_for` (which checks the identifier in every match branch)
-/// selects the `…-nativetls.…` archive instead of the default one.
+/// A substring unique to THIS build's asset within its OS/ARCH group, passed to
+/// `self_update` as the asset *identifier*.
+///
+/// `Release::asset_for` matches `name.contains(target) || (name.contains(OS) &&
+/// name.contains(ARCH))`, then ANDs an optional `identifier`. On **Linux** the
+/// `OS && ARCH` fallback (`linux` && `x86_64`) matches all three linux assets
+/// (gnu, musl, musl-nativetls), and `x86_64-unknown-linux-musl` is itself a
+/// substring of the `…-musl-nativetls` name — so a bare triple can resolve to
+/// the wrong archive (even the glibc one). A unique identifier is the only lever
+/// that defeats that fallback, so every linux variant supplies one:
+///   • native-tls → `nativetls`  (only the `…-musl-nativetls.…` asset)
+///   • rustls musl → `-musl.`     (the trailing dot excludes `…-musl-nativetls`)
+///   • rustls gnu  → `-gnu`       (absent from both musl assets)
+///
+/// macOS and Windows asset names are already unambiguous (the two darwin triples
+/// aren't substrings of each other; the `OS` const `macos` doesn't appear in
+/// `apple-darwin`; Windows ships a single asset), so they need no identifier.
 fn asset_identifier() -> Option<&'static str> {
-    if cfg!(feature = "tls-native-tls") {
-        Some("nativetls")
+    if cfg!(target_os = "linux") {
+        if cfg!(feature = "tls-native-tls") {
+            Some("nativetls")
+        } else if cfg!(target_env = "musl") {
+            Some("-musl.")
+        } else {
+            Some("-gnu")
+        }
     } else {
         None
     }
@@ -119,4 +139,114 @@ pub fn run(args: UpdateArgs) -> Result<()> {
         ui::ok(format!("already on the latest version ({current})."));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    /// Mirror of `self_update::Release::asset_for`'s predicate (0.42): an asset
+    /// matches when its name contains the target triple OR both the OS and ARCH
+    /// constants, and — if given — the identifier. Kept in lockstep with the
+    /// real crate so these tests actually prove our selection is unambiguous.
+    fn asset_matches(
+        name: &str,
+        target: &str,
+        identifier: Option<&str>,
+        os: &str,
+        arch: &str,
+    ) -> bool {
+        (name.contains(target) || (name.contains(os) && name.contains(arch)))
+            && identifier.is_none_or(|i| name.contains(i))
+    }
+
+    /// Every release asset published by `.github/workflows/release.yml`.
+    const ASSETS: &[&str] = &[
+        "molde-v9.9.9-x86_64-unknown-linux-gnu.tar.gz",
+        "molde-v9.9.9-x86_64-unknown-linux-musl.tar.gz",
+        "molde-v9.9.9-x86_64-unknown-linux-musl-nativetls.tar.gz",
+        "molde-v9.9.9-x86_64-apple-darwin.tar.gz",
+        "molde-v9.9.9-aarch64-apple-darwin.tar.gz",
+        "molde-v9.9.9-x86_64-pc-windows-msvc.zip",
+    ];
+
+    /// One build variant: the `(target, identifier)` it computes (mirroring
+    /// `asset_triple`/`asset_identifier`), the `std::env::consts` OS/ARCH on that
+    /// platform, and the single asset it must resolve to.
+    struct Case {
+        label: &'static str,
+        target: &'static str,
+        identifier: Option<&'static str>,
+        os: &'static str,
+        arch: &'static str,
+        expected: &'static str,
+    }
+
+    const CASES: &[Case] = &[
+        Case {
+            label: "linux-gnu",
+            target: "x86_64-unknown-linux-gnu",
+            identifier: Some("-gnu"),
+            os: "linux",
+            arch: "x86_64",
+            expected: "molde-v9.9.9-x86_64-unknown-linux-gnu.tar.gz",
+        },
+        Case {
+            label: "linux-musl-rustls",
+            target: "x86_64-unknown-linux-musl",
+            identifier: Some("-musl."),
+            os: "linux",
+            arch: "x86_64",
+            expected: "molde-v9.9.9-x86_64-unknown-linux-musl.tar.gz",
+        },
+        Case {
+            label: "linux-musl-nativetls",
+            target: "x86_64-unknown-linux-musl",
+            identifier: Some("nativetls"),
+            os: "linux",
+            arch: "x86_64",
+            expected: "molde-v9.9.9-x86_64-unknown-linux-musl-nativetls.tar.gz",
+        },
+        Case {
+            label: "macos-x86_64",
+            target: "x86_64-apple-darwin",
+            identifier: None,
+            os: "macos",
+            arch: "x86_64",
+            expected: "molde-v9.9.9-x86_64-apple-darwin.tar.gz",
+        },
+        Case {
+            label: "macos-aarch64",
+            target: "aarch64-apple-darwin",
+            identifier: None,
+            os: "macos",
+            arch: "aarch64",
+            expected: "molde-v9.9.9-aarch64-apple-darwin.tar.gz",
+        },
+        Case {
+            label: "windows-x86_64",
+            target: "x86_64-pc-windows-msvc",
+            identifier: None,
+            os: "windows",
+            arch: "x86_64",
+            expected: "molde-v9.9.9-x86_64-pc-windows-msvc.zip",
+        },
+    ];
+
+    #[test]
+    fn each_build_variant_selects_exactly_one_asset() {
+        for case in CASES {
+            let matched: Vec<&str> = ASSETS
+                .iter()
+                .copied()
+                .filter(|name| {
+                    asset_matches(name, case.target, case.identifier, case.os, case.arch)
+                })
+                .collect();
+            assert_eq!(
+                matched,
+                vec![case.expected],
+                "variant `{}` must resolve to exactly one asset",
+                case.label
+            );
+        }
+    }
 }
