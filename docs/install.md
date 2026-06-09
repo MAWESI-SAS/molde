@@ -20,8 +20,20 @@ molde --help
 ```
 
 The **musl** archive is fully static and runs on any Linux (no glibc version
-requirement) — handy for old distros and minimal containers. On macOS, use the
-`aarch64` archive for Apple Silicon and `x86_64` for Intel.
+requirement) — handy for old distros, minimal containers, and **WSL on an older
+Ubuntu**. The `-gnu` archive is built on a recent Ubuntu, so on an older glibc
+(e.g. Ubuntu 20.04 / glibc 2.31, common in WSL) it fails with `GLIBC_2.xx not
+found` — use the **musl** archive there:
+
+```bash
+curl -L -o molde.tar.gz \
+  https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.1-x86_64-unknown-linux-musl.tar.gz
+tar xzf molde.tar.gz
+sudo install molde-v0.0.1-x86_64-unknown-linux-musl/molde /usr/local/bin/molde
+molde --help
+```
+
+On macOS, use the `aarch64` archive for Apple Silicon and `x86_64` for Intel.
 
 On **Windows** (`curl` and `tar` ship with Windows 10/11), from `cmd`:
 
