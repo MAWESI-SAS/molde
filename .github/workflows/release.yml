@@ -23,7 +23,7 @@ jobs:
           generate_release_notes: true
 
   build:
-    name: ${{ matrix.target }}
+    name: ${{ matrix.target }}${{ matrix.suffix }}
     needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
@@ -34,6 +34,13 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
+          # Static musl build with a vendored OpenSSL (native-tls): runs on any
+          # Linux and accepts servers with legacy X.509 v1 certificates that
+          # rustls rejects.
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            suffix: -nativetls
+            flags: --no-default-features --features tls-native-tls-vendored
           - os: macos-latest
             target: x86_64-apple-darwin
           - os: macos-latest
@@ -55,16 +62,16 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.target }}
+          key: ${{ matrix.target }}${{ matrix.suffix }}
 
       - name: Build
-        run: cargo build --release --locked -p molde-cli --target ${{ matrix.target }}
+        run: cargo build --release --locked -p molde-cli ${{ matrix.flags }} --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          dist="molde-${{ github.ref_name }}-${{ matrix.target }}"
+          dist="molde-${{ github.ref_name }}-${{ matrix.target }}${{ matrix.suffix }}"
           mkdir "$dist"
           cp "target/${{ matrix.target }}/release/molde" "$dist/"
           cp README.md LICENSE-MIT LICENSE-APACHE "$dist/"
@@ -75,7 +82,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          dist="molde-${{ github.ref_name }}-${{ matrix.target }}"
+          dist="molde-${{ github.ref_name }}-${{ matrix.target }}${{ matrix.suffix }}"
           mkdir "$dist"
           cp "target/${{ matrix.target }}/release/molde.exe" "$dist/"
           cp README.md LICENSE-MIT LICENSE-APACHE "$dist/"

@@ -19,6 +19,11 @@ path = "src/main.rs"
 default = ["tls-rustls"]
 tls-rustls = ["molde-scaffold/tls-rustls", "molde-migrate/tls-rustls", "molde-sync/tls-rustls"]
 tls-native-tls = ["molde-scaffold/tls-native-tls", "molde-migrate/tls-native-tls", "molde-sync/tls-native-tls"]
+# Like `tls-native-tls`, but statically links a vendored OpenSSL (built from
+# source). Use for portable static (musl) release binaries that must run on any
+# Linux — including old glibc — and still talk to servers with legacy X.509 v1
+# certificates that rustls rejects.
+tls-native-tls-vendored = ["tls-native-tls", "dep:openssl", "openssl/vendored"]
 
 [dependencies]
 molde-core = { workspace = true }
@@ -38,3 +43,6 @@ time = { workspace = true }
 dialoguer = { version = "0.11", default-features = false, features = ["password"] }
 indicatif = "0.17"
 console = "0.15"
+# Only used to force a vendored, statically-linked OpenSSL into the build graph
+# (via feature unification) for `tls-native-tls-vendored`. Not referenced in code.
+openssl = { version = "0.10", optional = true }
