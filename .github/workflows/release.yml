@@ -93,3 +93,28 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ASSET }}
+
+  # Package the VS Code extension (.vsix) and attach it to the release. It's a
+  # cross-platform, highlighting-first build (the language server is resolved
+  # from PATH, never bundled), so no per-OS matrix is needed.
+  extension:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Package extension
+        working-directory: editors/vscode
+        run: |
+          npm install --no-audit --no-fund
+          npm run compile
+          npx --yes @vscode/vsce package
+
+      - name: Upload extension to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: editors/vscode/*.vsix

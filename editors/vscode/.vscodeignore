@@ -4,5 +4,8 @@ tsconfig.json
 .gitignore
 package-lock.json
 **/*.map
+# The language server is resolved from PATH (`molde.server.path`), never bundled,
+# so the .vsix stays small and cross-platform. Highlighting needs no binary.
+server/**
 # node_modules is NOT excluded: vscode-languageclient is used at runtime and
 # vsce includes only the production dependencies.
