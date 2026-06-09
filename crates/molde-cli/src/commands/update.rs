@@ -37,28 +37,41 @@ pub struct UpdateArgs {
     pub check: bool,
 }
 
-/// The release asset suffix for this build: `<target-triple>[-nativetls].<ext>`.
-/// Matches the archive names produced by the release workflow uniquely (the
-/// rustls musl asset ends in `-musl.<ext>`, the native-tls one in `-musl-nativetls.<ext>`).
-fn asset_target() -> String {
-    let triple = self_update::get_target();
-    let ext = if cfg!(target_os = "windows") {
-        "zip"
+/// The release-asset target triple for THIS build, computed from `cfg!`
+/// (`self_update::get_target()` doesn't detect musl and returns the gnu triple).
+fn asset_triple() -> String {
+    let arch = if cfg!(target_arch = "aarch64") {
+        "aarch64"
     } else {
-        "tar.gz"
+        "x86_64"
     };
-    let variant = if cfg!(feature = "tls-native-tls") {
-        "-nativetls"
+    let os_part = if cfg!(target_os = "windows") {
+        "pc-windows-msvc"
+    } else if cfg!(target_os = "macos") {
+        "apple-darwin"
+    } else if cfg!(target_env = "musl") {
+        "unknown-linux-musl"
     } else {
-        ""
+        "unknown-linux-gnu"
     };
-    format!("{triple}{variant}.{ext}")
+    format!("{arch}-{os_part}")
+}
+
+/// `Some("nativetls")` for native-tls builds — used as the asset *identifier* so
+/// `Release::asset_for` (which checks the identifier in every match branch)
+/// selects the `…-nativetls.…` archive instead of the default one.
+fn asset_identifier() -> Option<&'static str> {
+    if cfg!(feature = "tls-native-tls") {
+        Some("nativetls")
+    } else {
+        None
+    }
 }
 
 pub fn run(args: UpdateArgs) -> Result<()> {
     ui::header("molde update");
     let current = self_update::cargo_crate_version!();
-    let target = asset_target();
+    let target = asset_triple();
 
     if args.check {
         let releases = self_update::backends::github::ReleaseList::configure()
@@ -82,14 +95,19 @@ pub fn run(args: UpdateArgs) -> Result<()> {
         return Ok(());
     }
 
-    let status = self_update::backends::github::Update::configure()
+    let mut builder = self_update::backends::github::Update::configure();
+    builder
         .repo_owner("MAWESI-SAS")
         .repo_name("molde")
         .bin_name("molde")
         .target(&target)
         .current_version(current)
         .show_download_progress(true)
-        .no_confirm(true)
+        .no_confirm(true);
+    if let Some(id) = asset_identifier() {
+        builder.identifier(id);
+    }
+    let status = builder
         .build()
         .context("configuring the updater")?
         .update()
