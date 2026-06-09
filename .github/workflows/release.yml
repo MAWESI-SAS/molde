@@ -67,15 +67,15 @@ jobs:
       - name: Build
         run: cargo build --release --locked -p molde-cli ${{ matrix.flags }} --target ${{ matrix.target }}
 
+      # Archives are FLAT (binary at the root, no wrapping folder) so `molde
+      # update` (self_update) can locate the binary by name.
       - name: Package (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           dist="molde-${{ github.ref_name }}-${{ matrix.target }}${{ matrix.suffix }}"
-          mkdir "$dist"
-          cp "target/${{ matrix.target }}/release/molde" "$dist/"
-          cp README.md LICENSE-MIT LICENSE-APACHE "$dist/"
-          tar czf "$dist.tar.gz" "$dist"
+          cp "target/${{ matrix.target }}/release/molde" molde
+          tar czf "$dist.tar.gz" molde README.md LICENSE-MIT LICENSE-APACHE
           echo "ASSET=$dist.tar.gz" >> "$GITHUB_ENV"
 
       - name: Package (Windows)
@@ -83,10 +83,8 @@ jobs:
         shell: bash
         run: |
           dist="molde-${{ github.ref_name }}-${{ matrix.target }}${{ matrix.suffix }}"
-          mkdir "$dist"
-          cp "target/${{ matrix.target }}/release/molde.exe" "$dist/"
-          cp README.md LICENSE-MIT LICENSE-APACHE "$dist/"
-          7z a "$dist.zip" "$dist"
+          cp "target/${{ matrix.target }}/release/molde.exe" molde.exe
+          7z a "$dist.zip" molde.exe README.md LICENSE-MIT LICENSE-APACHE
           echo "ASSET=$dist.zip" >> "$GITHUB_ENV"
 
       - name: Upload archive to release

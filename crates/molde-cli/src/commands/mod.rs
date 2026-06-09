@@ -13,4 +13,5 @@ pub mod snapshot;
 pub mod sync;
 pub mod ui;
 pub mod up;
+pub mod update;
 pub mod verify;

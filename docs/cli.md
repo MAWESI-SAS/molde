@@ -18,6 +18,7 @@ molde [OPTIONS] <COMMAND>
 - Drift & sync: [`verify`](#molde-verify) · [`sync`](#molde-sync) ·
   [`up`](#molde-up) · [`fresh`](#molde-fresh)
 - Authoring & teams: [`fmt`](#molde-fmt) · [`init-team`](#molde-init-team)
+- Maintenance: [`update`](#molde-update)
 
 ## Global options & conventions
 
@@ -416,4 +417,27 @@ molde init-team [OPTIONS]
 
 ```bash
 molde init-team --ci github
+```
+
+---
+
+## `molde update`
+
+Self-update to the latest GitHub release: downloads the archive matching this
+platform and TLS variant and atomically replaces the running binary. The download
+uses rustls against GitHub regardless of molde's database TLS backend.
+
+```
+molde update [OPTIONS]
+```
+
+| Option | Description |
+|---|---|
+| `--check` | Only report whether a newer version exists; do not modify anything. |
+
+Needs write access to the installed binary (use `sudo` if it's in a system path).
+
+```bash
+molde update          # update to the latest release
+molde update --check  # report only
 ```

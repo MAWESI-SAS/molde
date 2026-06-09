@@ -13,9 +13,9 @@ one for your platform, extract it, and put `molde` on your `PATH`:
 ```bash
 # Linux x86_64 (glibc); see the releases page for other targets
 curl -L -o molde.tar.gz \
-  https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.3-x86_64-unknown-linux-gnu.tar.gz
+  https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.4-x86_64-unknown-linux-gnu.tar.gz
 tar xzf molde.tar.gz
-sudo mv molde-v0.0.3-x86_64-unknown-linux-gnu/molde /usr/local/bin/
+sudo install molde /usr/local/bin/molde
 molde --help
 ```
 
@@ -27,9 +27,9 @@ found` — use the **musl** archive there:
 
 ```bash
 curl -L -o molde.tar.gz \
-  https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.3-x86_64-unknown-linux-musl.tar.gz
+  https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.4-x86_64-unknown-linux-musl.tar.gz
 tar xzf molde.tar.gz
-sudo install molde-v0.0.3-x86_64-unknown-linux-musl/molde /usr/local/bin/molde
+sudo install molde /usr/local/bin/molde
 molde --help
 ```
 
@@ -38,17 +38,17 @@ On macOS, use the `aarch64` archive for Apple Silicon and `x86_64` for Intel.
 > **Connecting to a server with a legacy (X.509 v1) certificate?** The default
 > builds use **rustls**, which rejects v1 certs (you'd see `UnsupportedCertVersion`
 > /`invalid peer certificate`). Use the **`-nativetls`** Linux archive instead —
-> `molde-v0.0.3-x86_64-unknown-linux-musl-nativetls.tar.gz` — a static musl build
+> `molde-v0.0.4-x86_64-unknown-linux-musl-nativetls.tar.gz` — a static musl build
 > with a vendored OpenSSL that accepts those certs (still encrypted). Older
 > self-hosted PostgreSQL often presents such certificates.
 
 On **Windows** (`curl` and `tar` ship with Windows 10/11), from `cmd`:
 
 ```cmd
-curl -L -o molde.zip https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.3-x86_64-pc-windows-msvc.zip
+curl -L -o molde.zip https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.4-x86_64-pc-windows-msvc.zip
 tar -xf molde.zip
 mkdir "%USERPROFILE%\bin"
-move molde-v0.0.3-x86_64-pc-windows-msvc\molde.exe "%USERPROFILE%\bin\molde.exe"
+move molde.exe "%USERPROFILE%\bin\molde.exe"
 setx PATH "%PATH%;%USERPROFILE%\bin"
 :: open a NEW cmd window, then:
 molde --help
@@ -57,10 +57,10 @@ molde --help
 The same in **PowerShell**:
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.3-x86_64-pc-windows-msvc.zip -OutFile molde.zip
+Invoke-WebRequest -Uri https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.4-x86_64-pc-windows-msvc.zip -OutFile molde.zip
 Expand-Archive molde.zip -DestinationPath .
 New-Item -ItemType Directory -Force "$env:USERPROFILE\bin" | Out-Null
-Move-Item molde-v0.0.3-x86_64-pc-windows-msvc\molde.exe "$env:USERPROFILE\bin\molde.exe" -Force
+Move-Item molde.exe "$env:USERPROFILE\bin\molde.exe" -Force
 # add %USERPROFILE%\bin to PATH (Settings → Environment Variables), then in a new shell:
 molde --help
 ```
@@ -70,6 +70,19 @@ molde --help
 > entirely and run it by full path: `"%USERPROFILE%\bin\molde.exe" --help`.
 
 Prefer to build from source instead? Read on.
+
+## Updating
+
+Once molde is installed, it updates itself from the latest GitHub release:
+
+```bash
+molde update          # download the latest release for this platform and replace the binary
+molde update --check  # just report whether a newer version exists
+```
+
+It picks the archive matching your platform and TLS variant automatically (a
+native-tls install pulls the native-tls asset). If the binary lives in a
+system path, run it with `sudo` so it can replace itself.
 
 ## What it needs to build
 

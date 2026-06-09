@@ -43,6 +43,9 @@ time = { workspace = true }
 dialoguer = { version = "0.11", default-features = false, features = ["password"] }
 indicatif = "0.17"
 console = "0.15"
+# Self-update from GitHub releases (`molde update`). Always fetches over rustls
+# (GitHub has a modern cert); the asset variant is chosen at build time.
+self_update = { version = "0.42", default-features = false, features = ["archive-tar", "archive-zip", "compression-flate2", "compression-zip-deflate", "rustls"] }
 # Only used to force a vendored, statically-linked OpenSSL into the build graph
 # (via feature unification) for `tls-native-tls-vendored`. Not referenced in code.
 openssl = { version = "0.10", optional = true }

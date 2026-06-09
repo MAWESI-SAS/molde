@@ -109,6 +109,9 @@ enum Commands {
 
     /// Set up the snapshot merge driver (and optional CI) for team workflows.
     InitTeam(commands::init_team::InitTeamArgs),
+
+    /// Update molde to the latest GitHub release (self-replace).
+    Update(commands::update::UpdateArgs),
 }
 
 fn main() -> anyhow::Result<()> {
@@ -131,6 +134,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Undo(args) => commands::migrate::undo(args),
         Commands::Fmt(args) => commands::fmt::run(args),
         Commands::InitTeam(args) => commands::init_team::run(args),
+        Commands::Update(args) => commands::update::run(args),
     }
 }
 
