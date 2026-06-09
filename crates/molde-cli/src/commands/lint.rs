@@ -17,6 +17,22 @@ use molde_core::migration::{self, Migration};
 use crate::commands::ui;
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: static safety analysis of migration files. No database access — meant for CI on a PR.
+
+RESULT / EXIT:
+  • Exits non-zero on any DESTRUCTIVE change (e.g. drop table/column).
+  • With --strict, also fails on warnings (data-dependent changes such as adding a
+    UNIQUE index or a foreign key that could fail on existing rows).
+
+SELECTION (precedence): FILE args  >  --since <id>  >  --all  >  the latest migration only.
+
+EXAMPLES:
+  molde lint                            # the latest migration
+  molde lint --all --strict             # every migration; warnings fail too
+  molde lint --since 20260101000000_Base
+  molde lint migrations/20260101_AddX.json"#
+)]
 pub struct LintArgs {
     /// Specific migration file(s) to lint (e.g. just the ones your PR adds).
     /// When given, the selection flags (`--all`, `--since`) and the directory

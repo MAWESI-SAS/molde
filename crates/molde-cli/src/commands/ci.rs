@@ -29,6 +29,21 @@ use crate::commands::ui;
 use crate::commands::verify::{drift_items, read_live_model};
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: run the merge-gating checks together and print a Markdown report (for a PR comment).
+Exits non-zero if any check fails.
+
+CHECKS:
+  • lint     — static analysis of the migrations (no DB).
+  • snapshot — migrations/snapshot.json must be up to date with models/.
+  • verify   — ONLY when -c/--connection is given: apply every migration to that
+               (ephemeral) database from scratch, then check it has no drift.
+               Skipped when no connection is provided.
+
+EXAMPLES:
+  molde ci                                   # lint + snapshot (no DB; verify skipped)
+  molde ci -c "$DATABASE_URL" --report ci.md # + from-scratch verify, save the report"#
+)]
 pub struct CiArgs {
     /// Directory with the `.model` files (the model source).
     #[arg(long, default_value = "models")]

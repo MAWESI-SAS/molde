@@ -9,6 +9,20 @@ use molde_providers::Provider;
 use crate::commands::ui;
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: introspect a live database and write its schema as .model files (database-first start).
+READ-ONLY: only reads the catalog/information_schema; never modifies the database.
+
+PRECONDITIONS: a reachable database via -c/--connection or $DATABASE_URL.
+
+VALIDATIONS:
+  • Existing files in --out are kept unless --force.
+  • Engine is inferred from the URL scheme; if it can't be, pass --provider.
+  • Structure only: seed rows and the `seed`/`seed-key` blocks are NOT reconstructed.
+
+EXAMPLE:
+  molde pull -c "postgres://USER:PASSWORD@HOST:5432/DB" --out models"#
+)]
 pub struct PullArgs {
     /// Connection string to the source database.
     /// Defaults to the `DATABASE_URL` env var; if missing, you are prompted.

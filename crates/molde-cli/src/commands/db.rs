@@ -12,6 +12,22 @@ use molde_providers::Provider;
 use crate::commands::{apply, ui};
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: manage the database itself (not its schema) — like createdb/dropdb or rails db:*.
+
+SUBCOMMANDS:
+  create   create the database if it doesn't exist (idempotent).
+  drop     drop the database and ALL its data (destructive).
+  reset    drop + recreate + apply every migration from scratch (destructive).
+
+VALIDATIONS: drop/reset confirm first; under --no-input they refuse unless --yes is passed.
+Connection via -c/--connection or $DATABASE_URL; engine inferred from the URL or set with --provider.
+
+EXAMPLES:
+  molde db create -c "$DATABASE_URL"
+  molde db reset  -c "$DATABASE_URL" --yes
+  molde db drop   -c "$DATABASE_URL" --yes"#
+)]
 pub struct DbArgs {
     #[command(subcommand)]
     pub action: DbAction,

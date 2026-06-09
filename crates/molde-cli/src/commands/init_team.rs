@@ -39,6 +39,17 @@ fi
 "#;
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: wire a git repo for the team workflow — install the snapshot merge driver so
+concurrent migrations that both rewrite migrations/snapshot.json auto-resolve, plus an
+optional CI template.
+
+RUN once per clone (the git-config registration is per-clone, not shared). Run from the
+repo root, or pass --path. With --ci github it also writes a CI workflow template.
+
+EXAMPLE:
+  molde init-team --ci github"#
+)]
 pub struct InitTeamArgs {
     /// Repository root (defaults to the current directory).
     #[arg(long, default_value = ".")]

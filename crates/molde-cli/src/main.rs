@@ -16,8 +16,43 @@ mod commands;
 #[command(
     name = "molde",
     version,
-    about = "molde — a Rust schema tool: introspect, migrate, apply",
-    long_about = None
+    about = "molde — a Rust database SCHEMA tool: introspect, migrate, apply (PostgreSQL, MySQL, SQLite, SQL Server)",
+    long_about = "molde manages a relational database SCHEMA across PostgreSQL, MySQL, SQLite and \
+SQL Server, using a declarative `.model` language.\n\n\
+It does two directions:\n\
+  • database-first: read an existing DB into `.model` files (`pull`).\n\
+  • model-first: author `.model` files, diff them into versioned migrations (`migrate`), apply them (`apply`).\n\
+\n\
+It DOES NOT: run application/runtime queries, read or write table rows (it is a \
+schema manager, not an ORM), generate application code, or manage seed DATA as \
+runtime access (seed rows are part of the model and shipped via migrations).",
+    after_long_help = r#"WORKFLOWS (run commands in this order — later steps depend on earlier ones):
+  Model-first (author a schema):
+    1. write/edit models/*.model        (one entity per file; see `fmt`)
+    2. molde migrate <Name>             models -> a new migration + snapshot
+    3. molde apply -c <CONNECTION>      migration -> database
+  Database-first (adopt an existing DB):
+    1. molde pull -c <CONNECTION>       database -> models/*.model
+    2. (then migrate/apply as above)
+
+CONVENTIONS:
+  models/        source of truth; one table per <Entity>.model; database.model = globals
+  migrations/    <UTC-timestamp>_<Name>.json (engine-agnostic) + snapshot.json (managed by molde)
+  generated identifier names are lowercase: pk_<t> / fk_<t>_<p> / ix_<t>_<cols>
+
+CONNECTIONS (commands that touch a database):
+  -c/--connection accepts a URL (postgres://, mysql://, sqlite://) or reads $DATABASE_URL.
+  The engine is inferred from the URL scheme; override with --provider.
+  SQL Server uses an ADO string and needs --provider sqlserver.
+
+AUTOMATION:
+  --no-input  never prompt (CI); fail if required data is missing.
+  --yes/-y    skip confirmation for destructive or DB-touching commands.
+
+EXIT CODES: 0 = success; non-zero = error or a failed CI gate
+  (--check / lint); invalid arguments exit 2.
+
+See `molde <command> --help` for per-command syntax, preconditions, and examples."#
 )]
 struct Cli {
     /// Increase log verbosity (-v, -vv).

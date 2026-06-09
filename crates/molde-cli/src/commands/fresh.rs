@@ -16,6 +16,17 @@ use clap::Args;
 use crate::commands::{apply, ui};
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: rebuild the local database from migrations — roll ALL migrations back, then re-apply them.
+Leaves the DB as a clean projection of the committed migrations.
+
+DESTRUCTIVE: data in migration-managed tables is lost. Confirms first unless -y/--yes.
+
+PRECONDITIONS: migrations/ exists; a reachable -c/--connection or $DATABASE_URL.
+
+EXAMPLE:
+  molde fresh -c "$DATABASE_URL" --yes"#
+)]
 pub struct FreshArgs {
     /// Local database connection. Defaults to `DATABASE_URL`; prompted if missing.
     #[arg(long, short = 'c', env = "DATABASE_URL")]

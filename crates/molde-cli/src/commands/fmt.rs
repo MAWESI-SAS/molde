@@ -13,6 +13,19 @@ use clap::Args;
 use crate::commands::ui;
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: format .model files to their canonical form (a formatter for the model language).
+Structure only; touches no database. Note: canonicalizing expands authoring sugar (owns/enum/subtypes).
+
+MODES:
+  • paths (files/dirs; default models/) — reformat in place.
+  • --check — do not write; exit non-zero if any file is not already formatted (CI gate).
+  • --stdin — read from stdin, write the formatted result to stdout (for editors).
+
+EXAMPLES:
+  molde fmt
+  molde fmt --check"#
+)]
 pub struct FmtArgs {
     /// `.model` files or directories to format. Defaults to `models/`.
     pub paths: Vec<PathBuf>,

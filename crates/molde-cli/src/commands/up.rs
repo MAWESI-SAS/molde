@@ -14,6 +14,18 @@ use clap::Args;
 use crate::commands::{apply, sync, ui, verify};
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: catch the local database up (the daily step after a git pull), then print a drift report.
+
+MODES:
+  • default        — replay pending migrations (prod-accurate).
+  • --from-trunk DB — instead, additively sync from a canonical trunk database (fast; keeps local data).
+
+Confirms before applying unless -y/--yes. Finishes with a `verify` drift report.
+
+EXAMPLE:
+  molde up -c "$DATABASE_URL""#
+)]
 pub struct UpArgs {
     /// Local database connection. Defaults to `DATABASE_URL`; prompted if missing.
     #[arg(long, short = 'c', env = "DATABASE_URL")]

@@ -11,6 +11,24 @@ use molde_providers::Provider;
 use crate::commands::ui;
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: apply pending migrations to a database (or roll back with --to).
+Records each applied migration in the __EFMigrationsHistory table.
+
+ORDER / PRECONDITIONS:
+  • migrations/ must exist — run `molde migrate <Name>` first.
+  • a reachable database via -c/--connection or $DATABASE_URL.
+
+VALIDATIONS:
+  • Confirms before touching the database unless -y/--yes (or --no-input).
+  • --to <id|name> moves up OR down to that migration; --to 0 rolls everything back.
+  • Each migration runs in one transaction (its DDL + the history row together).
+
+EXAMPLES:
+  molde apply -c "$DATABASE_URL"                 # apply all pending
+  molde apply -c "$DATABASE_URL" --to 0          # roll back everything
+  molde apply -c "$DATABASE_URL" --to InitialCreate"#
+)]
 pub struct ApplyArgs {
     /// Connection string. Defaults to `DATABASE_URL`; if missing, you are prompted.
     #[arg(long, short = 'c', env = "DATABASE_URL")]

@@ -13,6 +13,24 @@ use time::OffsetDateTime;
 use crate::commands::ui;
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: diff models/ against the snapshot and write a new migration for the delta.
+Does NOT touch any database — run `molde apply` afterwards.
+
+ORDER / PRECONDITIONS:
+  1. models/ must contain at least one .model file (else it fails: "no .model files found").
+  2. Author/edit those models first; this records only what changed since the snapshot.
+
+VALIDATIONS:
+  • NAME is required (argument or prompt); with --no-input and no NAME it fails.
+  • Each .model is parsed; a syntax error aborts with file:line.
+  • If nothing changed vs the snapshot, no migration is written.
+  • On changes: writes migrations/<UTC-timestamp>_<Name>.json and updates migrations/snapshot.json.
+
+EXAMPLE:
+  molde migrate InitialCreate
+  #  reads models/, writes migrations/20260101120000_InitialCreate.json (+ snapshot.json)"#
+)]
 pub struct MigrateArgs {
     /// Migration name (e.g. `AddInvoices`). If omitted, you are prompted.
     pub name: Option<String>,
@@ -35,13 +53,28 @@ pub struct MigrateArgs {
 }
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: list the migration ids found on disk, in apply order. Read-only; touches no database.
+
+EXAMPLE:
+  molde status"#
+)]
 pub struct StatusArgs {
+    /// Directory where migrations are stored.
     #[arg(long, default_value = "migrations")]
     pub output_dir: PathBuf,
 }
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: delete the most recent migration file and regenerate the snapshot from the rest.
+LOCAL ONLY: does not revert anything already applied to a database — for that use `molde apply --to <id>`.
+
+EXAMPLE:
+  molde undo"#
+)]
 pub struct UndoArgs {
+    /// Directory where migrations are stored.
     #[arg(long, default_value = "migrations")]
     pub output_dir: PathBuf,
 

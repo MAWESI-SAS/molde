@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `--help` output rewritten for agent/LLM consumption: the global help states the
+  purpose, what molde does NOT do, the order of operations (model-first and
+  database-first), conventions, connection handling, and exit codes; every
+  command's `--help` now documents its purpose, preconditions/order, validations,
+  and a runnable example. Help text only — no behavior changed.
+
 ## [0.0.2] - 2026-06-09
 
 ### Added

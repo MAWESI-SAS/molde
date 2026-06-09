@@ -21,6 +21,21 @@ use crate::commands::migrate::load_model_dir;
 use crate::commands::ui;
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: regenerate migrations/snapshot.json from models/, or verify it is current (--check).
+The snapshot is the previous-state baseline `migrate` diffs against; molde manages it (don't hand-edit).
+
+USE:
+  • default: rewrites the snapshot file from the current models.
+  • --check: CI gate — exits non-zero if the committed snapshot is stale (does not write).
+
+NOTE: `molde migrate` already updates the snapshot; run this mainly for the --check gate
+or to repair the snapshot after a merge.
+
+EXAMPLES:
+  molde snapshot           # rewrite migrations/snapshot.json
+  molde snapshot --check   # CI: fail if stale"#
+)]
 pub struct SnapshotArgs {
     /// Directory with the `.model` files (the model source).
     #[arg(long, default_value = "models")]

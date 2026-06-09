@@ -30,6 +30,17 @@ use crate::commands::migrate::load_model_dir;
 use crate::commands::ui;
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: check whether a live database matches models/ (structural drift). READ-ONLY.
+
+SCOPE: structure only (tables, columns, keys, indexes, functions, triggers).
+Seed/data rows are intentionally ignored.
+
+USE: --check is a CI gate — exits non-zero on any drift. Without it, it just reports.
+
+EXAMPLE:
+  molde verify -c "$DATABASE_URL" --check"#
+)]
 pub struct VerifyArgs {
     /// Connection string to the database to check.
     /// Defaults to the `DATABASE_URL` env var; if missing, you are prompted.

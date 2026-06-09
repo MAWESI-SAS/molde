@@ -15,6 +15,18 @@ use time::OffsetDateTime;
 use crate::commands::ui;
 
 #[derive(Args)]
+#[command(
+    after_long_help = r#"PURPOSE: additively bring a TARGET database up to a SOURCE database (live DB -> live DB).
+
+SAFE BY DESIGN: only creates what the target lacks; never drops or alters existing target
+objects. Objects defined differently in both are reported as conflicts, not applied.
+
+PRECONDITIONS: both databases reachable via --source/--target (or $MOLDE_SYNC_SOURCE /
+$MOLDE_SYNC_TARGET). Confirms before applying unless -y/--yes; --dry-run only writes the .sql + report.
+
+EXAMPLE:
+  molde sync --source "$TRUNK_DB" --target "$DATABASE_URL" --dry-run"#
+)]
 pub struct SyncArgs {
     /// Source database (the one changes are brought FROM, e.g. the shared `test`).
     /// Falls back to the `MOLDE_SYNC_SOURCE` env var; prompted if missing.
