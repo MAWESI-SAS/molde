@@ -3,7 +3,45 @@
 `molde` is a single self-contained binary (`molde`, or `molde.exe` on Windows).
 There is no runtime to install — drop it on your `PATH` and go.
 
-## Download a prebuilt binary (fastest)
+## Install (one-liner) — no Rust required
+
+The installer detects your OS and architecture, downloads the matching prebuilt
+binary from the latest release, and puts it on your `PATH`.
+
+**Linux / macOS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MAWESI-SAS/molde/main/install.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/MAWESI-SAS/molde/main/install.ps1 | iex
+```
+
+Then verify:
+
+```bash
+molde --version
+```
+
+The Linux installer uses the **static musl** build, which runs on any Linux
+regardless of its glibc version (old distros, minimal containers, WSL). It
+installs to `/usr/local/bin` when writable, otherwise to `~/.local/bin`.
+
+Knobs (environment variables):
+
+| Variable | Purpose |
+| --- | --- |
+| `MOLDE_INSTALL_DIR` | Install somewhere else, e.g. `MOLDE_INSTALL_DIR=~/bin`. |
+| `MOLDE_VERSION` | Pin a release, e.g. `MOLDE_VERSION=v0.0.5`. |
+| `MOLDE_TLS=nativetls` | Linux only — get the build that accepts legacy X.509 v1 certificates (see the note below). |
+
+Already installed? `molde update` self-updates to the latest release (see
+[Updating](#updating)).
+
+## Download a prebuilt binary (manual)
 
 Each release ships archives for Linux (glibc and static musl), macOS (Intel and
 Apple Silicon) and Windows on the
@@ -97,7 +135,7 @@ the alternate backend for a server presenting a legacy X.509 v1 certificate that
 rustls rejects — build with `--no-default-features --features tls-native-tls`
 (that path *does* need the system TLS/OpenSSL dev libraries).
 
-## The one-liner (any OS)
+## Build from a clone (needs Rust)
 
 From a clone of this repo, with rustup installed:
 

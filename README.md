@@ -185,15 +185,23 @@ migrations/             # versioned in git
 
 ## Install
 
-`molde` is a single binary. With [rustup](https://rustup.rs) installed:
+`molde` is a single self-contained binary — no runtime, no Rust required. The
+one-liner downloads the prebuilt binary for your platform and puts it on your `PATH`:
 
 ```bash
-cargo install --path crates/molde-cli      # → molde on your PATH
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/MAWESI-SAS/molde/main/install.sh | sh
 ```
 
-The only native build dependency is a C compiler (for the bundled SQLite); TLS is
-rustls (no OpenSSL). Per-OS steps (Linux/macOS/Windows), prebuilt binaries, and
-static musl builds are in [docs/install.md](docs/install.md).
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/MAWESI-SAS/molde/main/install.ps1 | iex
+```
+
+Then `molde update` keeps it current. Prefer to build from source? With
+[rustup](https://rustup.rs): `cargo install --path crates/molde-cli`. Per-OS
+steps, manual downloads, and the legacy-TLS build are in
+[docs/install.md](docs/install.md).
 
 ## Development
 
