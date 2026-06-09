@@ -21,8 +21,36 @@ molde --help
 
 The **musl** archive is fully static and runs on any Linux (no glibc version
 requirement) — handy for old distros and minimal containers. On macOS, use the
-`aarch64` archive for Apple Silicon and `x86_64` for Intel. Prefer to build from
-source instead? Read on.
+`aarch64` archive for Apple Silicon and `x86_64` for Intel.
+
+On **Windows** (`curl` and `tar` ship with Windows 10/11), from `cmd`:
+
+```cmd
+curl -L -o molde.zip https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.1-x86_64-pc-windows-msvc.zip
+tar -xf molde.zip
+mkdir "%USERPROFILE%\bin"
+move molde-v0.0.1-x86_64-pc-windows-msvc\molde.exe "%USERPROFILE%\bin\molde.exe"
+setx PATH "%PATH%;%USERPROFILE%\bin"
+:: open a NEW cmd window, then:
+molde --help
+```
+
+The same in **PowerShell**:
+
+```powershell
+Invoke-WebRequest -Uri https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.1-x86_64-pc-windows-msvc.zip -OutFile molde.zip
+Expand-Archive molde.zip -DestinationPath .
+New-Item -ItemType Directory -Force "$env:USERPROFILE\bin" | Out-Null
+Move-Item molde-v0.0.1-x86_64-pc-windows-msvc\molde.exe "$env:USERPROFILE\bin\molde.exe" -Force
+# add %USERPROFILE%\bin to PATH (Settings → Environment Variables), then in a new shell:
+molde --help
+```
+
+> `setx` truncates a PATH longer than ~1024 chars; if yours is long, add the
+> folder via *Settings → Environment Variables → Path* instead. Or skip PATH
+> entirely and run it by full path: `"%USERPROFILE%\bin\molde.exe" --help`.
+
+Prefer to build from source instead? Read on.
 
 ## What it needs to build
 
