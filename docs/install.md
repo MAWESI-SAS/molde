@@ -1,7 +1,28 @@
 # Installing molde
 
 `molde` is a single self-contained binary (`molde`, or `molde.exe` on Windows).
-There is no runtime to install — you build it once and put it on your `PATH`.
+There is no runtime to install — drop it on your `PATH` and go.
+
+## Download a prebuilt binary (fastest)
+
+Each release ships archives for Linux (glibc and static musl), macOS (Intel and
+Apple Silicon) and Windows on the
+[releases page](https://github.com/MAWESI-SAS/molde/releases/latest). Grab the
+one for your platform, extract it, and put `molde` on your `PATH`:
+
+```bash
+# Linux x86_64 (glibc); see the releases page for other targets
+curl -L -o molde.tar.gz \
+  https://github.com/MAWESI-SAS/molde/releases/latest/download/molde-v0.0.1-x86_64-unknown-linux-gnu.tar.gz
+tar xzf molde.tar.gz
+sudo mv molde-v0.0.1-x86_64-unknown-linux-gnu/molde /usr/local/bin/
+molde --help
+```
+
+The **musl** archive is fully static and runs on any Linux (no glibc version
+requirement) — handy for old distros and minimal containers. On macOS, use the
+`aarch64` archive for Apple Silicon and `x86_64` for Intel. Prefer to build from
+source instead? Read on.
 
 ## What it needs to build
 
