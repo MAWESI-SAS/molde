@@ -189,6 +189,7 @@ mod tests {
                     principal_schema: None,
                     principal_columns: vec!["Id".into()],
                     on_delete: ReferentialAction::NoAction,
+                    on_update: ReferentialAction::NoAction,
                 },
             },
         ];

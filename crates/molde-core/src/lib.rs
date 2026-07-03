@@ -15,6 +15,7 @@ pub mod lint;
 pub mod migration;
 pub mod model;
 pub mod snapshot;
+pub mod sqltext;
 
 pub use diff::{apply_operation, diff, Operation};
 pub use migration::{rebuild_model, Migration, MIGRATION_FORMAT_VERSION};

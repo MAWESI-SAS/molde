@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use molde_core::model::{
-    Column, DatabaseModel, DbFunction, ForeignKey, Index, PrimaryKey, ReferentialAction, Table,
-    Trigger, TriggerEvent, TriggerTiming, IR_FORMAT_VERSION,
+    CheckConstraint, Column, DatabaseModel, DbFunction, ForeignKey, Index, PrimaryKey,
+    ReferentialAction, Table, Trigger, TriggerEvent, TriggerTiming, View, IR_FORMAT_VERSION,
 };
 use serde_json::Value;
 
@@ -22,6 +22,7 @@ pub struct DbGlobals {
     pub extensions: Vec<String>,
     pub functions: Vec<DbFunction>,
     pub raw_objects: Vec<String>,
+    pub views: Vec<View>,
 }
 
 /// Parses a full project: each file `(name, contents)`. The `database.model`
@@ -37,6 +38,7 @@ pub fn parse_project(files: &[(&str, &str)]) -> Result<DatabaseModel> {
             model.extensions = g.extensions;
             model.functions = g.functions;
             model.raw_objects = g.raw_objects;
+            model.views = g.views;
         } else {
             model
                 .tables
@@ -77,6 +79,17 @@ fn parse_database_inner(src: &str) -> Result<DbGlobals> {
             "raw" => {
                 for item in &node.children {
                     g.raw_objects.push(item.block.clone().unwrap_or_default());
+                }
+            }
+            "views" => {
+                for item in &node.children {
+                    let (label, _) = item.as_kv();
+                    let (schema, vname) = split_schema(&label);
+                    g.views.push(View {
+                        name: vname,
+                        schema,
+                        definition: item.block.clone().unwrap_or_default(),
+                    });
                 }
             }
             other => {
@@ -122,6 +135,7 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
         foreign_keys: Vec::new(),
         indexes: Vec::new(),
         triggers: Vec::new(),
+        check_constraints: Vec::new(),
         seed_data: Vec::new(),
         seed_key: Vec::new(),
     };
@@ -159,6 +173,15 @@ fn parse_entity_inner(src: &str) -> Result<Table> {
             "triggers" => {
                 for tg in &section.children {
                     table.triggers.push(parse_trigger(&table, tg)?);
+                }
+            }
+            "checks" => {
+                for ck in &section.children {
+                    let (name, inline) = ck.as_kv();
+                    table.check_constraints.push(CheckConstraint {
+                        name,
+                        expression: unquote(&inline),
+                    });
                 }
             }
             "seed" => {
@@ -503,6 +526,10 @@ fn parse_fk(table_name: &str, node: &Node) -> Result<(ForeignKey, bool)> {
         Some(s) => parse_action(&s, node.line)?,
         None => ReferentialAction::NoAction,
     };
+    let on_update = match map.get("onUpdate").and_then(value_str) {
+        Some(s) => parse_action(&s, node.line)?,
+        None => ReferentialAction::NoAction,
+    };
     let name = map
         .get("name")
         .and_then(value_str)
@@ -519,6 +546,7 @@ fn parse_fk(table_name: &str, node: &Node) -> Result<(ForeignKey, bool)> {
             principal_schema,
             principal_columns,
             on_delete,
+            on_update,
         },
         opted_out,
     ))

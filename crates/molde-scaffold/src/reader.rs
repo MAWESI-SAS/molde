@@ -103,6 +103,7 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
         foreign_keys: Vec::new(),
         indexes: Vec::new(),
         triggers: Vec::new(),
+        check_constraints: Vec::new(),
         seed_data: Vec::new(),
         seed_key: Vec::new(),
     };
@@ -184,6 +185,7 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
         let from: String = r.try_get("from")?;
         let to: String = r.try_get("to")?;
         let on_delete: String = r.try_get("on_delete").unwrap_or_default();
+        let on_update: String = r.try_get("on_update").unwrap_or_default();
 
         let fk = fks.entry(id).or_insert_with(|| {
             // Match the authoring convention for the common single-FK case
@@ -201,6 +203,7 @@ async fn read_sqlite_table(pool: &AnyPool, name: &str) -> Result<Table, ReadErro
                 principal_schema: None,
                 principal_columns: Vec::new(),
                 on_delete: parse_action(&on_delete),
+                on_update: parse_action(&on_update),
             }
         });
         fk.columns.push(from);
@@ -304,6 +307,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
                 foreign_keys: Vec::new(),
                 indexes: Vec::new(),
                 triggers: Vec::new(),
+                check_constraints: Vec::new(),
                 seed_data: Vec::new(),
                 seed_key: Vec::new(),
             },
@@ -428,7 +432,8 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
                 kcu.column_name::text AS column_name, \
                 ccu.table_name::text AS foreign_table, \
                 ccu.column_name::text AS foreign_column, \
-                rc.delete_rule::text AS delete_rule \
+                rc.delete_rule::text AS delete_rule, \
+                rc.update_rule::text AS update_rule \
          FROM information_schema.table_constraints tc \
          JOIN information_schema.key_column_usage kcu \
            ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema \
@@ -452,6 +457,7 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         let foreign_table: String = r.try_get("foreign_table")?;
         let foreign_column: String = r.try_get("foreign_column")?;
         let delete_rule: String = r.try_get("delete_rule").unwrap_or_default();
+        let update_rule: String = r.try_get("update_rule").unwrap_or_default();
 
         match table.foreign_keys.iter_mut().find(|f| f.name == constraint) {
             Some(fk) => {
@@ -465,8 +471,42 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
                 principal_schema: Some(schema.to_string()),
                 principal_columns: vec![foreign_column],
                 on_delete: parse_action(&delete_rule),
+                on_update: parse_action(&update_rule),
             }),
         }
+    }
+
+    // CHECK constraints. `pg_get_constraintdef` returns the full `CHECK (...)`
+    // text, preserved verbatim for a faithful round-trip.
+    let ck_rows = sqlx::query(&format!(
+        "SELECT t.relname::text AS table_name, con.conname::text AS name, \
+                pg_get_constraintdef(con.oid)::text AS def \
+         FROM pg_constraint con \
+         JOIN pg_class t ON t.oid = con.conrelid \
+         JOIN pg_namespace n ON n.oid = t.relnamespace \
+         WHERE n.nspname = '{sc}' AND con.contype = 'c' \
+         ORDER BY t.relname, con.conname"
+    ))
+    .fetch_all(pool)
+    .await?;
+
+    for r in ck_rows {
+        let table_name: String = r.try_get("table_name")?;
+        let Some(table) = tables.get_mut(&table_name) else {
+            continue;
+        };
+        let def: String = r.try_get("def").unwrap_or_default();
+        if def.is_empty() {
+            continue;
+        }
+        table
+            .check_constraints
+            .push(molde_core::model::CheckConstraint {
+                name: r.try_get("name")?,
+                // Canonicalized so reads from different databases converge
+                // (Postgres re-normalizes whole-array casts when re-applied).
+                expression: molde_core::sqltext::normalize_pg_expression(&def),
+            });
     }
 
     // Indexes (includes GIN/GiST/HNSW/IVFFlat and expression-based). Those
@@ -514,7 +554,9 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
             filter: if filter.is_empty() {
                 None
             } else {
-                Some(filter)
+                // Same canonicalization as check constraints: partial-index
+                // predicates suffer the identical array-cast re-normalization.
+                Some(molde_core::sqltext::normalize_pg_expression(&filter))
             },
             method,
             operators,
@@ -602,9 +644,35 @@ async fn read_postgres(pool: &AnyPool, schema: &str) -> Result<DatabaseModel, Re
         .filter_map(|r| r.try_get::<String, _>("name").ok())
         .collect();
 
+    // Views (`relkind = 'v'`). The definition is the raw SELECT from
+    // `pg_get_viewdef`, without the `CREATE VIEW ... AS` prefix.
+    let view_rows = sqlx::query(&format!(
+        "SELECT c.relname::text AS name, \
+                pg_get_viewdef(c.oid, true)::text AS def \
+         FROM pg_class c \
+         JOIN pg_namespace n ON n.oid = c.relnamespace \
+         WHERE n.nspname = '{sc}' AND c.relkind = 'v' \
+         ORDER BY c.relname"
+    ))
+    .fetch_all(pool)
+    .await?;
+    let mut views = Vec::new();
+    for r in view_rows {
+        let def: String = r.try_get("def").unwrap_or_default();
+        if def.is_empty() {
+            continue;
+        }
+        views.push(molde_core::model::View {
+            name: r.try_get("name")?,
+            schema: Some(schema.to_string()),
+            definition: def.trim().trim_end_matches(';').to_string(),
+        });
+    }
+
     model.tables = tables.into_values().collect();
     model.functions = functions;
     model.extensions = extensions;
+    model.views = views;
     Ok(model)
 }
 
@@ -742,8 +810,12 @@ fn pg_clr(data_type: &str, udt: &str) -> &'static str {
         "double precision" => "System.Double",
         "numeric" | "money" => "System.Decimal",
         "uuid" => "System.Guid",
-        "date" | "timestamp without time zone" | "timestamp" => "System.DateTime",
+        "timestamp without time zone" | "timestamp" => "System.DateTime",
         "timestamp with time zone" => "System.DateTimeOffset",
+        // Day-only / time-only types map to their dedicated CLR types so the
+        // DDL round-trips to `date`/`time` (not `timestamp`).
+        "date" => "System.DateOnly",
+        "time without time zone" | "time" => "System.TimeOnly",
         "bytea" => "System.Byte[]",
         // Full-text search: tsvector → native Npgsql type.
         "tsvector" => "NpgsqlTypes.NpgsqlTsVector",
@@ -857,6 +929,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
                 foreign_keys: Vec::new(),
                 indexes: Vec::new(),
                 triggers: Vec::new(),
+                check_constraints: Vec::new(),
                 seed_data: Vec::new(),
                 seed_key: Vec::new(),
             },
@@ -965,7 +1038,8 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
                 CONVERT(k.COLUMN_NAME USING utf8mb4) AS COLUMN_NAME, \
                 CONVERT(k.REFERENCED_TABLE_NAME USING utf8mb4) AS REFERENCED_TABLE_NAME, \
                 CONVERT(k.REFERENCED_COLUMN_NAME USING utf8mb4) AS REFERENCED_COLUMN_NAME, \
-                CONVERT(r.DELETE_RULE USING utf8mb4) AS DELETE_RULE \
+                CONVERT(r.DELETE_RULE USING utf8mb4) AS DELETE_RULE, \
+                CONVERT(r.UPDATE_RULE USING utf8mb4) AS UPDATE_RULE \
          FROM information_schema.KEY_COLUMN_USAGE k \
          JOIN information_schema.REFERENTIAL_CONSTRAINTS r \
            ON k.CONSTRAINT_NAME = r.CONSTRAINT_NAME AND k.CONSTRAINT_SCHEMA = r.CONSTRAINT_SCHEMA \
@@ -984,6 +1058,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
         let foreign_table = my_str(&r, "REFERENCED_TABLE_NAME")?;
         let foreign_column = my_str(&r, "REFERENCED_COLUMN_NAME")?;
         let delete_rule = my_str(&r, "DELETE_RULE").unwrap_or_default();
+        let update_rule = my_str(&r, "UPDATE_RULE").unwrap_or_default();
 
         match table.foreign_keys.iter_mut().find(|f| f.name == constraint) {
             Some(fk) => {
@@ -997,6 +1072,7 @@ async fn read_mysql(pool: &AnyPool, schema: Option<&str>) -> Result<DatabaseMode
                 principal_schema: None,
                 principal_columns: vec![foreign_column],
                 on_delete: parse_action(&delete_rule),
+                on_update: parse_action(&update_rule),
             }),
         }
     }
@@ -1095,6 +1171,7 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
                 foreign_keys: Vec::new(),
                 indexes: Vec::new(),
                 triggers: Vec::new(),
+                check_constraints: Vec::new(),
                 seed_data: Vec::new(),
                 seed_key: Vec::new(),
             },
@@ -1221,7 +1298,8 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
         &format!(
             "SELECT fk.name AS fk_name, tp.name AS table_name, cp.name AS column_name, \
                     tr.name AS ref_table, cr.name AS ref_column, \
-                    fk.delete_referential_action_desc AS delete_rule \
+                    fk.delete_referential_action_desc AS delete_rule, \
+                    fk.update_referential_action_desc AS update_rule \
              FROM sys.foreign_keys fk \
              JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id \
              JOIN sys.tables tp ON tp.object_id = fk.parent_object_id \
@@ -1247,6 +1325,10 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
             .get::<&str, _>("delete_rule")
             .unwrap_or("")
             .replace('_', " ");
+        let update_rule = r
+            .get::<&str, _>("update_rule")
+            .unwrap_or("")
+            .replace('_', " ");
 
         match table.foreign_keys.iter_mut().find(|f| f.name == name) {
             Some(fk) => {
@@ -1260,6 +1342,7 @@ async fn read_sqlserver(url: &str, schema: &str) -> Result<DatabaseModel, ReadEr
                 principal_schema: Some(schema.to_string()),
                 principal_columns: vec![ref_column],
                 on_delete: parse_action(&delete_rule),
+                on_update: parse_action(&update_rule),
             }),
         }
     }

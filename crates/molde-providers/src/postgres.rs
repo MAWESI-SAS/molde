@@ -16,6 +16,17 @@ fn on_delete_clause(action: ReferentialAction) -> &'static str {
     }
 }
 
+/// `ON UPDATE` clause for a referential action (empty for `NoAction`).
+fn on_update_clause(action: ReferentialAction) -> &'static str {
+    match action {
+        ReferentialAction::Cascade => " ON UPDATE CASCADE",
+        ReferentialAction::SetNull => " ON UPDATE SET NULL",
+        ReferentialAction::SetDefault => " ON UPDATE SET DEFAULT",
+        ReferentialAction::Restrict => " ON UPDATE RESTRICT",
+        ReferentialAction::NoAction => "",
+    }
+}
+
 pub struct PostgresGenerator;
 
 impl PostgresGenerator {
@@ -77,6 +88,14 @@ impl PostgresGenerator {
                 cols.join(", ")
             ));
         }
+        for ck in &table.check_constraints {
+            // `expression` already carries the full `CHECK (...)` text.
+            lines.push(format!(
+                "    CONSTRAINT {} {}",
+                self.quote_ident(&ck.name),
+                ck.expression
+            ));
+        }
         Ok(format!(
             "CREATE TABLE {} (\n{}\n);",
             self.qualified(table.schema.as_deref(), &table.name),
@@ -124,6 +143,8 @@ impl SqlGenerator for PostgresGenerator {
             },
             "System.DateTime" => "timestamp without time zone",
             "System.DateTimeOffset" => "timestamp with time zone",
+            "System.DateOnly" => "date",
+            "System.TimeOnly" => "time without time zone",
             "System.Guid" => "uuid",
             "System.Byte[]" => "bytea",
             "System.String" => {
@@ -240,6 +261,39 @@ impl SqlGenerator for PostgresGenerator {
                 self.quote_ident(name),
                 self.qualified(schema.as_deref(), table)
             )],
+            Operation::AddCheckConstraint {
+                schema,
+                table,
+                check,
+            } => vec![format!(
+                "ALTER TABLE {} ADD CONSTRAINT {} {};",
+                self.qualified(schema.as_deref(), table),
+                self.quote_ident(&check.name),
+                check.expression
+            )],
+            Operation::DropCheckConstraint {
+                schema,
+                table,
+                name,
+            } => vec![format!(
+                "ALTER TABLE {} DROP CONSTRAINT {};",
+                self.qualified(schema.as_deref(), table),
+                self.quote_ident(name)
+            )],
+            Operation::CreateView { view } => {
+                let body = view.definition.trim().trim_end_matches(';');
+                vec![format!(
+                    "CREATE VIEW {} AS\n{};",
+                    self.qualified(view.schema.as_deref(), &view.name),
+                    body
+                )]
+            }
+            Operation::DropView { schema, name } => {
+                vec![format!(
+                    "DROP VIEW IF EXISTS {};",
+                    self.qualified(schema.as_deref(), name)
+                )]
+            }
             Operation::RawSql { sql } => vec![sql.clone()],
             // Postgres uses granular ALTER; the rebuild is only for SQLite.
             Operation::RebuildTable { .. } => Vec::new(),
@@ -273,13 +327,14 @@ impl PostgresGenerator {
             &fk.principal_table,
         );
         format!(
-            "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}){};",
+            "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}){}{};",
             self.qualified(schema, table),
             self.quote_ident(&fk.name),
             cols.join(", "),
             principal,
             pcols.join(", "),
             on_delete_clause(fk.on_delete),
+            on_update_clause(fk.on_update),
         )
     }
 

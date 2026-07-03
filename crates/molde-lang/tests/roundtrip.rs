@@ -82,9 +82,11 @@ fn fk_without_index_emits_index_false_and_round_trips() {
             principal_schema: None,
             principal_columns: vec!["Id".into()],
             on_delete: ReferentialAction::NoAction,
+            on_update: ReferentialAction::NoAction,
         }],
         indexes: vec![],
         triggers: vec![],
+        check_constraints: Vec::new(),
         seed_data: vec![],
         seed_key: vec![],
     };
@@ -161,6 +163,7 @@ fn sample() -> DatabaseModel {
             expression: None,
         }],
         triggers: vec![],
+        check_constraints: Vec::new(),
         seed_data: vec![
             row(&[
                 ("Id", json!(1)),
@@ -209,9 +212,11 @@ fn sample() -> DatabaseModel {
             principal_schema: None,
             principal_columns: vec!["Id".into()],
             on_delete: ReferentialAction::Cascade,
+            on_update: ReferentialAction::NoAction,
         }],
         indexes: vec![],
         triggers: vec![],
+        check_constraints: Vec::new(),
         seed_data: vec![],
         seed_key: vec![],
     });
@@ -275,6 +280,7 @@ fn sample() -> DatabaseModel {
             function: Some("normalize_body".into()),
             definition: "CREATE TRIGGER trg_normalize BEFORE INSERT OR UPDATE ON audit.documents\nFOR EACH ROW EXECUTE FUNCTION normalize_body()".into(),
         }],
+        check_constraints: vec![],
         seed_data: vec![],
         seed_key: vec![],
     });
@@ -301,9 +307,11 @@ fn sample() -> DatabaseModel {
             principal_schema: None,
             principal_columns: vec!["Id".into()],
             on_delete: ReferentialAction::SetNull,
+            on_update: ReferentialAction::NoAction,
         }],
         indexes: vec![],
         triggers: vec![],
+        check_constraints: Vec::new(),
         seed_data: vec![],
         seed_key: vec![],
     });

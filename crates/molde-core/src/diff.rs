@@ -7,7 +7,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Column, DatabaseModel, DbFunction, ForeignKey, Index, Table, Trigger};
+use crate::model::{
+    CheckConstraint, Column, DatabaseModel, DbFunction, ForeignKey, Index, Table, Trigger, View,
+};
 
 /// An atomic migration operation. Provider-agnostic; each provider translates
 /// it to SQL.
@@ -84,6 +86,26 @@ pub enum Operation {
         table: String,
         name: String,
     },
+    /// Adds a `CHECK` constraint to an existing table. (For new tables the
+    /// checks travel inside `CreateTable`.)
+    AddCheckConstraint {
+        schema: Option<String>,
+        table: String,
+        check: CheckConstraint,
+    },
+    DropCheckConstraint {
+        schema: Option<String>,
+        table: String,
+        name: String,
+    },
+    /// Creates a schema view.
+    CreateView {
+        view: View,
+    },
+    DropView {
+        schema: Option<String>,
+        name: String,
+    },
     /// Raw DDL to run verbatim (escape hatch; see [`DatabaseModel::raw_objects`]).
     RawSql {
         sql: String,
@@ -146,6 +168,10 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     let mut data_ops = Vec::new();
     let mut raw_sql = Vec::new();
     let mut drop_tables = Vec::new();
+    let mut add_checks = Vec::new();
+    let mut drop_checks = Vec::new();
+    let mut create_views = Vec::new();
+    let mut drop_views = Vec::new();
 
     // New raw DDL objects (SQL Server full-text, etc.). Verbatim, at the
     // end (they depend on already-created tables/indexes).
@@ -189,6 +215,38 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
             drop_functions.push(Operation::DropFunction {
                 schema: f.schema.clone(),
                 name: f.name.clone(),
+            });
+        }
+    }
+
+    // Views: a definition change is drop + create (`CREATE OR REPLACE VIEW`
+    // fails when the column list changes; drop + create always works).
+    for v in &to.views {
+        match from
+            .views
+            .iter()
+            .find(|x| x.name == v.name && x.schema == v.schema)
+        {
+            Some(old) if old.definition == v.definition => {}
+            Some(_) => {
+                drop_views.push(Operation::DropView {
+                    schema: v.schema.clone(),
+                    name: v.name.clone(),
+                });
+                create_views.push(Operation::CreateView { view: v.clone() });
+            }
+            None => create_views.push(Operation::CreateView { view: v.clone() }),
+        }
+    }
+    for v in &from.views {
+        if !to
+            .views
+            .iter()
+            .any(|x| x.name == v.name && x.schema == v.schema)
+        {
+            drop_views.push(Operation::DropView {
+                schema: v.schema.clone(),
+                name: v.name.clone(),
             });
         }
     }
@@ -237,6 +295,7 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
         diff_foreign_keys(old_t, new_t, &mut add_fks, &mut drop_fks);
         diff_indexes(old_t, new_t, &mut create_indexes, &mut drop_indexes);
         diff_triggers(old_t, new_t, &mut create_triggers, &mut drop_triggers);
+        diff_check_constraints(old_t, new_t, &mut add_checks, &mut drop_checks);
 
         // Changes that SQLite cannot do with ALTER (column type or FK):
         // a full rebuild is also emitted, which SQLite materializes.
@@ -252,7 +311,9 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
                 .foreign_keys
                 .iter()
                 .any(|f| !new_t.foreign_keys.iter().any(|o| o.name == f.name));
-        if column_type_changed || fk_changed {
+        // SQLite cannot ALTER a CHECK either; a change forces a rebuild there.
+        let check_changed = new_t.check_constraints != old_t.check_constraints;
+        if column_type_changed || fk_changed || check_changed {
             let copy_columns = new_t
                 .columns
                 .iter()
@@ -296,13 +357,16 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
 
     let mut ops = Vec::new();
     ops.extend(ensure_extensions);
+    // Views first among the drops: they may depend on tables/columns about to change.
+    ops.extend(drop_views);
     ops.extend(drop_triggers);
     ops.extend(drop_fks);
+    ops.extend(drop_checks);
     ops.extend(drop_indexes);
-    ops.extend(drop_functions);
     ops.extend(create_tables);
     ops.extend(column_ops);
     ops.extend(add_fks);
+    ops.extend(add_checks);
     // Functions after the tables (they may reference them) and before indexes and
     // triggers (which may use them, e.g. functional expression indexes).
     ops.extend(create_functions);
@@ -311,7 +375,12 @@ pub fn diff(from: &DatabaseModel, to: &DatabaseModel) -> Vec<Operation> {
     ops.extend(rebuilds);
     ops.extend(data_ops);
     ops.extend(raw_sql);
+    // Views last among the creates: they may reference any table or function.
+    ops.extend(create_views);
     ops.extend(drop_tables);
+    // Functions after the dropped tables: their triggers (which fall with the
+    // table) may still depend on these functions until the table is gone.
+    ops.extend(drop_functions);
     ops
 }
 
@@ -450,13 +519,28 @@ fn diff_foreign_keys(
     add: &mut Vec<Operation>,
     drop: &mut Vec<Operation>,
 ) {
+    // A same-name FK whose definition changed (columns, referenced table,
+    // on_delete/on_update) is drop + add: engines cannot ALTER an FK in place.
     for fk in &new_t.foreign_keys {
-        if !old_t.foreign_keys.iter().any(|f| f.name == fk.name) {
-            add.push(Operation::AddForeignKey {
+        match old_t.foreign_keys.iter().find(|f| f.name == fk.name) {
+            Some(old) if old == fk => {}
+            Some(_) => {
+                drop.push(Operation::DropForeignKey {
+                    schema: new_t.schema.clone(),
+                    table: new_t.name.clone(),
+                    name: fk.name.clone(),
+                });
+                add.push(Operation::AddForeignKey {
+                    schema: new_t.schema.clone(),
+                    table: new_t.name.clone(),
+                    foreign_key: fk.clone(),
+                });
+            }
+            None => add.push(Operation::AddForeignKey {
                 schema: new_t.schema.clone(),
                 table: new_t.name.clone(),
                 foreign_key: fk.clone(),
-            });
+            }),
         }
     }
     for fk in &old_t.foreign_keys {
@@ -465,6 +549,46 @@ fn diff_foreign_keys(
                 schema: new_t.schema.clone(),
                 table: new_t.name.clone(),
                 name: fk.name.clone(),
+            });
+        }
+    }
+}
+
+fn diff_check_constraints(
+    old_t: &Table,
+    new_t: &Table,
+    add: &mut Vec<Operation>,
+    drop: &mut Vec<Operation>,
+) {
+    // An expression change is drop + add (there is no ALTER for a CHECK).
+    for ck in &new_t.check_constraints {
+        match old_t.check_constraints.iter().find(|c| c.name == ck.name) {
+            Some(old) if old.expression == ck.expression => {}
+            Some(_) => {
+                drop.push(Operation::DropCheckConstraint {
+                    schema: new_t.schema.clone(),
+                    table: new_t.name.clone(),
+                    name: ck.name.clone(),
+                });
+                add.push(Operation::AddCheckConstraint {
+                    schema: new_t.schema.clone(),
+                    table: new_t.name.clone(),
+                    check: ck.clone(),
+                });
+            }
+            None => add.push(Operation::AddCheckConstraint {
+                schema: new_t.schema.clone(),
+                table: new_t.name.clone(),
+                check: ck.clone(),
+            }),
+        }
+    }
+    for ck in &old_t.check_constraints {
+        if !new_t.check_constraints.iter().any(|c| c.name == ck.name) {
+            drop.push(Operation::DropCheckConstraint {
+                schema: new_t.schema.clone(),
+                table: new_t.name.clone(),
+                name: ck.name.clone(),
             });
         }
     }
@@ -647,6 +771,40 @@ pub fn apply_operation(model: &mut DatabaseModel, op: &Operation) {
                 t.triggers.retain(|x| &x.name != name);
             }
         }
+        Operation::AddCheckConstraint {
+            schema,
+            table,
+            check,
+        } => {
+            if let Some(t) = find_mut(model, schema, table) {
+                t.check_constraints.retain(|c| c.name != check.name);
+                t.check_constraints.push(check.clone());
+            }
+        }
+        Operation::DropCheckConstraint {
+            schema,
+            table,
+            name,
+        } => {
+            if let Some(t) = find_mut(model, schema, table) {
+                t.check_constraints.retain(|c| &c.name != name);
+            }
+        }
+        Operation::CreateView { view } => {
+            match model
+                .views
+                .iter_mut()
+                .find(|v| v.name == view.name && v.schema == view.schema)
+            {
+                Some(existing) => *existing = view.clone(),
+                None => model.views.push(view.clone()),
+            }
+        }
+        Operation::DropView { schema, name } => {
+            model
+                .views
+                .retain(|v| !(v.schema.as_deref() == schema.as_deref() && &v.name == name));
+        }
         Operation::RawSql { sql } => {
             if !model.raw_objects.contains(sql) {
                 model.raw_objects.push(sql.clone());
@@ -751,6 +909,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            check_constraints: Vec::new(),
             seed_data: vec![],
             seed_key: vec![],
         }
@@ -841,6 +1000,7 @@ mod tests {
             principal_schema: None,
             principal_columns: vec!["Id".into()],
             on_delete: crate::model::ReferentialAction::Cascade,
+            on_update: crate::model::ReferentialAction::NoAction,
         });
         order.indexes.push(Index {
             name: "IX_Order_CustomerId".into(),
@@ -1120,5 +1280,125 @@ mod tests {
         }
         assert_eq!(rebuilt.table(None, "Customer").unwrap().columns.len(), 2);
         assert!(diff(&rebuilt, &target).is_empty(), "rebuild is equivalent");
+    }
+
+    #[test]
+    fn baseline_down_drops_functions_after_tables() {
+        // The trigger on the table depends on the function until the table is
+        // gone: the down of a baseline must drop tables before functions.
+        let mut model = DatabaseModel::empty();
+        model.functions.push(func(
+            "normalize_body",
+            "CREATE FUNCTION normalize_body() ...",
+        ));
+        let mut t = table("documents", &["Id"]);
+        t.triggers
+            .push(trig("trg_norm", "CREATE TRIGGER trg_norm ..."));
+        model.tables.push(t);
+
+        let down = diff(&model, &DatabaseModel::empty());
+        let table_pos = down
+            .iter()
+            .position(|o| matches!(o, Operation::DropTable { .. }))
+            .unwrap();
+        let fn_pos = down
+            .iter()
+            .position(|o| matches!(o, Operation::DropFunction { .. }))
+            .unwrap();
+        assert!(
+            table_pos < fn_pos,
+            "tables must drop before the functions their triggers use"
+        );
+    }
+
+    #[test]
+    fn check_constraint_change_is_drop_plus_add() {
+        let ck = |expr: &str| CheckConstraint {
+            name: "ck_status".into(),
+            expression: expr.into(),
+        };
+        let mut from = DatabaseModel::empty();
+        let mut t0 = table("orders", &["Id"]);
+        t0.check_constraints.push(ck("CHECK (status = 'a')"));
+        from.tables.push(t0);
+
+        let mut to = DatabaseModel::empty();
+        let mut t1 = table("orders", &["Id"]);
+        t1.check_constraints.push(ck("CHECK (status IN ('a','b'))"));
+        to.tables.push(t1);
+
+        let ops = diff(&from, &to);
+        assert!(ops.iter().any(
+            |o| matches!(o, Operation::DropCheckConstraint { name, .. } if name == "ck_status")
+        ));
+        assert!(ops.iter().any(
+            |o| matches!(o, Operation::AddCheckConstraint { check, .. } if check.expression.contains("'b'"))
+        ));
+    }
+
+    #[test]
+    fn view_change_is_drop_plus_create_and_created_last() {
+        let view = |def: &str| View {
+            name: "v_active".into(),
+            schema: None,
+            definition: def.into(),
+        };
+        let mut from = DatabaseModel::empty();
+        from.views.push(view("SELECT 1"));
+        let mut to = DatabaseModel::empty();
+        to.views.push(view("SELECT 2"));
+        to.tables.push(table("orders", &["Id"]));
+
+        let ops = diff(&from, &to);
+        let drop_pos = ops
+            .iter()
+            .position(|o| matches!(o, Operation::DropView { .. }))
+            .unwrap();
+        let create_pos = ops
+            .iter()
+            .position(|o| matches!(o, Operation::CreateView { .. }))
+            .unwrap();
+        let table_pos = ops
+            .iter()
+            .position(|o| matches!(o, Operation::CreateTable { .. }))
+            .unwrap();
+        assert!(drop_pos < table_pos, "views drop before tables change");
+        assert!(
+            table_pos < create_pos,
+            "views are created after the tables they reference"
+        );
+    }
+
+    #[test]
+    fn fk_referential_action_change_is_drop_plus_add() {
+        let fk = |upd: crate::model::ReferentialAction| ForeignKey {
+            name: "fk_customer".into(),
+            columns: vec!["CustomerId".into()],
+            principal_table: "Customer".into(),
+            principal_schema: None,
+            principal_columns: vec!["Id".into()],
+            on_delete: crate::model::ReferentialAction::Cascade,
+            on_update: upd,
+        };
+        let mut from = DatabaseModel::empty();
+        let mut t0 = table("orders", &["Id"]);
+        t0.foreign_keys
+            .push(fk(crate::model::ReferentialAction::NoAction));
+        from.tables.push(t0);
+        let mut to = DatabaseModel::empty();
+        let mut t1 = table("orders", &["Id"]);
+        t1.foreign_keys
+            .push(fk(crate::model::ReferentialAction::Cascade));
+        to.tables.push(t1);
+
+        let ops = diff(&from, &to);
+        assert!(ops
+            .iter()
+            .any(|o| matches!(o, Operation::DropForeignKey { name, .. } if name == "fk_customer")));
+        assert!(ops.iter().any(|o| matches!(
+            o,
+            Operation::AddForeignKey { foreign_key, .. }
+                if foreign_key.on_update == crate::model::ReferentialAction::Cascade
+        )));
     }
 }

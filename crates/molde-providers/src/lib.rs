@@ -121,6 +121,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            check_constraints: Vec::new(),
             seed_data: vec![],
             seed_key: vec![],
         }
@@ -212,6 +213,7 @@ mod tests {
                 principal_schema: None,
                 principal_columns: vec!["Id".into()],
                 on_delete: ReferentialAction::Cascade,
+                on_update: ReferentialAction::NoAction,
             },
         }
     }
@@ -610,6 +612,7 @@ mod tests {
             principal_schema: None,
             principal_columns: vec!["Id".into()],
             on_delete: ReferentialAction::Cascade,
+            on_update: ReferentialAction::NoAction,
         });
         let sql = SqliteGenerator::new()
             .emit(&Operation::CreateTable { table: order })

@@ -19,6 +19,17 @@ fn on_delete_clause(action: ReferentialAction) -> &'static str {
     }
 }
 
+/// `ON UPDATE` clause for a referential action (empty for `NoAction`).
+fn on_update_clause(action: ReferentialAction) -> &'static str {
+    match action {
+        ReferentialAction::Cascade => " ON UPDATE CASCADE",
+        ReferentialAction::SetNull => " ON UPDATE SET NULL",
+        ReferentialAction::SetDefault => " ON UPDATE SET DEFAULT",
+        ReferentialAction::Restrict => " ON UPDATE RESTRICT",
+        ReferentialAction::NoAction => "",
+    }
+}
+
 pub struct MySqlGenerator;
 
 impl MySqlGenerator {
@@ -78,13 +89,14 @@ impl MySqlGenerator {
             .map(|c| self.quote_ident(c))
             .collect();
         format!(
-            "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}){};",
+            "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}){}{};",
             self.quote_ident(table),
             self.quote_ident(&fk.name),
             cols.join(", "),
             self.quote_ident(&fk.principal_table),
             pcols.join(", "),
             on_delete_clause(fk.on_delete),
+            on_update_clause(fk.on_update),
         )
     }
 
@@ -138,6 +150,8 @@ impl SqlGenerator for MySqlGenerator {
                 _ => "decimal(18,2)",
             },
             "System.DateTime" => "datetime(6)",
+            "System.DateOnly" => "date",
+            "System.TimeOnly" => "time",
             "System.DateTimeOffset" => "datetime(6)", // MySQL has no type with offset
             "System.Guid" => "char(36)",
             "System.Byte[]" => "longblob",
@@ -194,6 +208,36 @@ impl SqlGenerator for MySqlGenerator {
                 self.quote_ident(name),
                 self.quote_ident(table)
             )],
+            Operation::AddCheckConstraint {
+                schema: _,
+                table,
+                check,
+            } => vec![format!(
+                "ALTER TABLE {} ADD CONSTRAINT {} {};",
+                self.quote_ident(table),
+                self.quote_ident(&check.name),
+                check.expression
+            )],
+            Operation::DropCheckConstraint {
+                schema: _,
+                table,
+                name,
+            } => vec![format!(
+                "ALTER TABLE {} DROP CHECK {};",
+                self.quote_ident(table),
+                self.quote_ident(name)
+            )],
+            Operation::CreateView { view } => {
+                let body = view.definition.trim().trim_end_matches(';');
+                vec![format!(
+                    "CREATE VIEW {} AS\n{};",
+                    self.quote_ident(&view.name),
+                    body
+                )]
+            }
+            Operation::DropView { schema: _, name } => {
+                vec![format!("DROP VIEW IF EXISTS {};", self.quote_ident(name))]
+            }
             Operation::RawSql { sql } => vec![sql.clone()],
             Operation::RebuildTable { .. } => Vec::new(),
             Operation::InsertData { schema, table, row } => {

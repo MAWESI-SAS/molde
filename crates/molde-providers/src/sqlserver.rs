@@ -23,6 +23,16 @@ fn on_delete_clause(action: ReferentialAction) -> &'static str {
     }
 }
 
+fn on_update_clause(action: ReferentialAction) -> &'static str {
+    match action {
+        ReferentialAction::Cascade => " ON UPDATE CASCADE",
+        ReferentialAction::SetNull => " ON UPDATE SET NULL",
+        ReferentialAction::SetDefault => " ON UPDATE SET DEFAULT",
+        // SQL Server has no RESTRICT; NO ACTION is the equivalent.
+        ReferentialAction::Restrict | ReferentialAction::NoAction => "",
+    }
+}
+
 pub struct SqlServerGenerator;
 
 impl SqlServerGenerator {
@@ -100,13 +110,14 @@ impl SqlServerGenerator {
             &fk.principal_table,
         );
         format!(
-            "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}){};",
+            "ALTER TABLE {} ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}){}{};",
             self.qualified(schema, table),
             self.quote_ident(&fk.name),
             cols.join(", "),
             principal,
             pcols.join(", "),
             on_delete_clause(fk.on_delete),
+            on_update_clause(fk.on_update),
         )
     }
 
@@ -169,6 +180,8 @@ impl SqlGenerator for SqlServerGenerator {
                 _ => "decimal(18,2)",
             },
             "System.DateTime" => "datetime2",
+            "System.DateOnly" => "date",
+            "System.TimeOnly" => "time",
             "System.DateTimeOffset" => "datetimeoffset",
             "System.Guid" => "uniqueidentifier",
             "System.Byte[]" => "varbinary(max)",
@@ -254,6 +267,39 @@ impl SqlGenerator for SqlServerGenerator {
                 self.quote_ident(name),
                 self.qualified(schema.as_deref(), table)
             )],
+            Operation::AddCheckConstraint {
+                schema,
+                table,
+                check,
+            } => vec![format!(
+                "ALTER TABLE {} ADD CONSTRAINT {} {};",
+                self.qualified(schema.as_deref(), table),
+                self.quote_ident(&check.name),
+                check.expression
+            )],
+            Operation::DropCheckConstraint {
+                schema,
+                table,
+                name,
+            } => vec![format!(
+                "ALTER TABLE {} DROP CONSTRAINT {};",
+                self.qualified(schema.as_deref(), table),
+                self.quote_ident(name)
+            )],
+            Operation::CreateView { view } => {
+                let body = view.definition.trim().trim_end_matches(';');
+                vec![format!(
+                    "CREATE VIEW {} AS\n{};",
+                    self.qualified(view.schema.as_deref(), &view.name),
+                    body
+                )]
+            }
+            Operation::DropView { schema, name } => {
+                vec![format!(
+                    "DROP VIEW IF EXISTS {};",
+                    self.qualified(schema.as_deref(), name)
+                )]
+            }
             Operation::RawSql { sql } => vec![sql.clone()],
             Operation::RebuildTable { .. } => Vec::new(),
             Operation::InsertData { schema, table, row } => {

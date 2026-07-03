@@ -132,6 +132,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            check_constraints: Vec::new(),
             seed_data: vec![],
             seed_key: vec![],
         });

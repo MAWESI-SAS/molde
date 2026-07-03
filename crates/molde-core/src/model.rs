@@ -43,6 +43,10 @@ pub struct DatabaseModel {
     /// `vector`…). Ensured with `CREATE EXTENSION IF NOT EXISTS` before the DDL.
     #[serde(default)]
     pub extensions: Vec<String>,
+    /// Schema views. Preserved as the raw `SELECT` body (`View::definition`)
+    /// for a faithful round-trip, like functions and triggers.
+    #[serde(default)]
+    pub views: Vec<View>,
 }
 
 impl DatabaseModel {
@@ -56,6 +60,7 @@ impl DatabaseModel {
             functions: Vec::new(),
             raw_objects: Vec::new(),
             extensions: Vec::new(),
+            views: Vec::new(),
         }
     }
 
@@ -77,12 +82,16 @@ impl DatabaseModel {
             t.foreign_keys.sort_by(|a, b| a.name.cmp(&b.name));
             t.indexes.sort_by(|a, b| a.name.cmp(&b.name));
             t.triggers.sort_by(|a, b| a.name.cmp(&b.name));
+            t.check_constraints.sort_by(|a, b| a.name.cmp(&b.name));
         }
         self.functions.sort_by(|a, b| {
             (a.schema.as_deref(), a.name.as_str()).cmp(&(b.schema.as_deref(), b.name.as_str()))
         });
         self.raw_objects.sort();
         self.extensions.sort();
+        self.views.sort_by(|a, b| {
+            (a.schema.as_deref(), a.name.as_str()).cmp(&(b.schema.as_deref(), b.name.as_str()))
+        });
     }
 }
 
@@ -112,6 +121,11 @@ pub struct Table {
     /// raw SQL (`Trigger::definition`) for a faithful round-trip.
     #[serde(default)]
     pub triggers: Vec<Trigger>,
+    /// `CHECK` constraints of the table. The expression is kept as the engine
+    /// reports it (e.g. `pg_get_constraintdef` without the `CHECK` keyword is
+    /// NOT stripped: the full `CHECK (...)` text is stored).
+    #[serde(default)]
+    pub check_constraints: Vec<CheckConstraint>,
     /// Seed data declared with `HasData` (model-first). Each row maps
     /// column → JSON value. Materialized as `INSERT`/`UPDATE`/`DELETE`.
     #[serde(default)]
@@ -203,6 +217,10 @@ pub struct ForeignKey {
     pub principal_columns: Vec<String>,
     #[serde(default)]
     pub on_delete: ReferentialAction,
+    /// Maps to the provider's `ON UPDATE`. `NoAction` (the default) is omitted
+    /// from the DDL, like `on_delete`.
+    #[serde(default)]
+    pub on_update: ReferentialAction,
 }
 
 /// Index (unique or not).
@@ -276,5 +294,25 @@ pub struct DbFunction {
     #[serde(default)]
     pub schema: Option<String>,
     /// Raw DDL `CREATE [OR REPLACE] FUNCTION ...` as returned by the engine.
+    pub definition: String,
+}
+
+/// A `CHECK` constraint on a table.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckConstraint {
+    pub name: String,
+    /// Full constraint text as reported by the engine, including the `CHECK`
+    /// keyword (e.g. `CHECK ((status)::text = ANY (...))`).
+    pub expression: String,
+}
+
+/// A schema view. The `definition` is the raw `SELECT` body as reported by the
+/// engine (e.g. `pg_get_viewdef`), without the `CREATE VIEW ... AS` prefix.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct View {
+    pub name: String,
+    #[serde(default)]
+    pub schema: Option<String>,
+    /// Raw `SELECT ...` body as returned by the engine.
     pub definition: String,
 }

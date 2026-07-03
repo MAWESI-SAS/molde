@@ -68,14 +68,14 @@ fn exotic_store_type(col: &Column) -> Option<&str> {
         .unwrap_or(st)
         .trim()
         .to_ascii_lowercase();
+    // NOTE: fixed-length `char`/`character(n)`/`nchar` are NOT conventional: the
+    // type derived from String + max_length is varchar(n), so dropping their
+    // store_type would silently turn them into varchar on apply.
     const CONVENTIONAL: &[&str] = &[
         "character varying",
         "varchar",
         "text",
-        "char",
-        "character",
         "nvarchar",
-        "nchar",
         "integer",
         "int",
         "bigint",
@@ -175,6 +175,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            check_constraints: Vec::new(),
             seed_data: vec![],
             seed_key: vec![],
         });
@@ -221,6 +222,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            check_constraints: Vec::new(),
             seed_data: vec![],
             seed_key: vec![],
         };
@@ -308,6 +310,7 @@ mod tests {
             foreign_keys: vec![],
             indexes: vec![],
             triggers: vec![],
+            check_constraints: Vec::new(),
             seed_data: vec![],
             seed_key: vec![],
         };

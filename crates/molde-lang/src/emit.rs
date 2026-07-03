@@ -62,6 +62,17 @@ pub fn emit_database(model: &DatabaseModel) -> String {
             emit_block(&mut s, r, 6);
         }
     }
+    if !model.views.is_empty() {
+        let _ = writeln!(s, "views:");
+        for v in &model.views {
+            let label = match &v.schema {
+                Some(sc) => format!("{sc}.{}", v.name),
+                None => v.name.clone(),
+            };
+            let _ = writeln!(s, "  - {label}: |");
+            emit_block(&mut s, &v.definition, 6);
+        }
+    }
     s
 }
 
@@ -131,6 +142,13 @@ pub fn emit_entity(t: &Table, _model: &DatabaseModel) -> String {
         let _ = writeln!(s, "  indexes:");
         for ix in block_indexes {
             let _ = writeln!(s, "    - {}: {}", ix.name, emit_index(ix));
+        }
+    }
+
+    if !t.check_constraints.is_empty() {
+        let _ = writeln!(s, "  checks:");
+        for ck in &t.check_constraints {
+            let _ = writeln!(s, "    - {}: {}", ck.name, quote_scalar(&ck.expression));
         }
     }
 
@@ -265,9 +283,12 @@ fn emit_fk(t: &Table, fk: &ForeignKey) -> String {
         format!("{principal}.[{}]", fk.principal_columns.join(", "))
     };
     parts.push(format!("references: {refs}"));
-    // onDelete (only if it is not the default value)
+    // onDelete / onUpdate (only if they are not the default value)
     if fk.on_delete != ReferentialAction::NoAction {
         parts.push(format!("onDelete: {}", action_name(fk.on_delete)));
+    }
+    if fk.on_update != ReferentialAction::NoAction {
+        parts.push(format!("onUpdate: {}", action_name(fk.on_update)));
     }
     // name (only if it is not conventional)
     if fk.name != molde_core::conventions::fk_name(&t.name, &fk.principal_table) {

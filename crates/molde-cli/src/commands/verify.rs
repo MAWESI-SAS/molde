@@ -280,6 +280,10 @@ fn classify(op: &Operation) -> (Direction, String) {
         Operation::CreateTrigger { table, trigger, .. } => {
             (MissingInDb, format!("trigger {table}.{}", trigger.name))
         }
+        Operation::AddCheckConstraint { table, check, .. } => {
+            (MissingInDb, format!("check {table}.{}", check.name))
+        }
+        Operation::CreateView { view } => (MissingInDb, format!("view {}", view.name)),
         Operation::InsertData { table, .. } => (MissingInDb, format!("seed row in {table}")),
 
         Operation::DropTable { name, .. } => (ExtraInDb, format!("table {name}")),
@@ -292,6 +296,10 @@ fn classify(op: &Operation) -> (Direction, String) {
         Operation::DropTrigger { table, name, .. } => {
             (ExtraInDb, format!("trigger {table}.{name}"))
         }
+        Operation::DropCheckConstraint { table, name, .. } => {
+            (ExtraInDb, format!("check {table}.{name}"))
+        }
+        Operation::DropView { name, .. } => (ExtraInDb, format!("view {name}")),
         Operation::DeleteData { table, .. } => (ExtraInDb, format!("seed row in {table}")),
 
         Operation::AlterColumn { table, new, .. } => {

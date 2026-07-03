@@ -20,6 +20,17 @@ fn on_delete_clause(action: ReferentialAction) -> &'static str {
     }
 }
 
+/// `ON UPDATE` clause for a referential action (empty for `NoAction`).
+fn on_update_clause(action: ReferentialAction) -> &'static str {
+    match action {
+        ReferentialAction::Cascade => " ON UPDATE CASCADE",
+        ReferentialAction::SetNull => " ON UPDATE SET NULL",
+        ReferentialAction::SetDefault => " ON UPDATE SET DEFAULT",
+        ReferentialAction::Restrict => " ON UPDATE RESTRICT",
+        ReferentialAction::NoAction => "",
+    }
+}
+
 pub struct SqliteGenerator;
 
 impl SqliteGenerator {
@@ -78,12 +89,13 @@ impl SqliteGenerator {
                 .map(|c| self.quote_ident(c))
                 .collect();
             lines.push(format!(
-                "    CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}){}",
+                "    CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}){}{}",
                 self.quote_ident(&fk.name),
                 cols.join(", "),
                 self.quote_ident(&fk.principal_table),
                 pcols.join(", "),
                 on_delete_clause(fk.on_delete),
+                on_update_clause(fk.on_update),
             ));
         }
 
@@ -116,7 +128,12 @@ impl SqlGenerator for SqliteGenerator {
             "System.Int16" | "System.Int32" | "System.Int64" | "System.Boolean" => "INTEGER",
             "System.Single" | "System.Double" => "REAL",
             "System.Decimal" => "TEXT", // EF stores decimal as TEXT in SQLite
-            "System.DateTime" | "System.DateTimeOffset" | "System.Guid" | "System.String" => "TEXT",
+            "System.DateTime"
+            | "System.DateTimeOffset"
+            | "System.DateOnly"
+            | "System.TimeOnly"
+            | "System.Guid"
+            | "System.String" => "TEXT",
             "System.Byte[]" => "BLOB",
             _ => {
                 return Err(ProviderError::UnmappedType {
@@ -183,6 +200,22 @@ impl SqlGenerator for SqliteGenerator {
                 table,
                 copy_columns,
             } => self.rebuild_table(table, copy_columns)?,
+            // SQLite cannot ALTER a CHECK; the change is materialized by the
+            // RebuildTable that diff() emits alongside these granular ops.
+            Operation::AddCheckConstraint { .. } | Operation::DropCheckConstraint { .. } => {
+                Vec::new()
+            }
+            Operation::CreateView { view } => {
+                let body = view.definition.trim().trim_end_matches(';');
+                vec![format!(
+                    "CREATE VIEW {} AS\n{};",
+                    self.quote_ident(&view.name),
+                    body
+                )]
+            }
+            Operation::DropView { schema: _, name } => {
+                vec![format!("DROP VIEW IF EXISTS {};", self.quote_ident(name))]
+            }
             Operation::RawSql { sql } => vec![sql.clone()],
             Operation::InsertData { schema, table, row } => {
                 self.emit_insert_data(schema.as_deref(), table, row)
