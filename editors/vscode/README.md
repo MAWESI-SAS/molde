@@ -4,6 +4,8 @@ VS Code extension for molde's **molde** model language. It combines:
 
 - **Syntax highlighting** — TextMate grammar (`syntaxes/molde.tmLanguage.json`),
   no dependencies.
+- **File icon** — `.model` files get their own molde icon (`icons/molde.svg`)
+  in the explorer and tabs.
 - **Formatting** — format-on-save via the language server (molde emitter's
   canonical form). Also available on the CLI with `molde fmt`.
 - **Navigation and dependencies** — provided by the `molde-lsp` language server:
@@ -39,12 +41,17 @@ npm install
 npm run compile        # generates out/extension.js
 
 # Option A — package and install:
-npx @vscode/vsce package        # generates molde-language-0.0.1.vsix
-code --install-extension molde-language-0.0.1.vsix
+npx @vscode/vsce package        # generates molde-language-<version>.vsix
+code --install-extension molde-language-<version>.vsix
 
 # Option B — development: open this folder in VS Code and press F5
 # (Extension Development Host).
 ```
+
+> **Keep `molde-lsp` in sync with the language.** When the `.model` language
+> gains syntax (new sections or facets), rebuild and replace the `molde-lsp`
+> binary on your `PATH` — an old server will flag the new syntax as parse
+> errors even though the CLI accepts it.
 
 ## Settings
 

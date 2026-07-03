@@ -25,3 +25,4 @@ sync-*.sql
 # Internal development artifacts (not part of the public project)
 handoffs/
 .claude/
+.gstack/
